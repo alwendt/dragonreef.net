@@ -1,0 +1,139 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<%@ ts prefix="ts" %>
+<html>
+<head>
+<title>Move <ts:var var="oldFileName" /></title>
+<link href="../corporate/FileManager.css" rel="stylesheet" type="text/css" />
+</head>
+
+  <body>
+    <table width="750" border="0" cellpadding="0" cellspacing="0" align="center">
+      <tr>
+        <td valign="top">
+          <table width="320" border="0" cellpadding="0" cellspacing="0">
+            <tr>
+              <td colspan="3" class="menuTopBorder"><img src="../corporate/images/spacer.gif" width="1" height="1" alt="" class="spacer" /></td>
+            </tr>
+            <tr>
+              <td class="menuTopBorder"><img src="../corporate/images/spacer.gif" width="1" height="1" alt="" class="spacer" /></td>
+              <td class="menuTopBarWithText">Move from:</td>
+              <td class="menuTopBorder"><img src="../corporate/images/spacer.gif" width="1" height="1" alt="" class="spacer" /></td>
+            </tr>
+            <tr>
+              <td colspan="3" class="menuTopBorder"><img src="../corporate/images/spacer.gif" width="1" height="1" alt="" class="spacer" /></td>
+            </tr>
+            <tr>
+              <td class="menuTopBorder"><img src="../corporate/images/spacer.gif" width="1" height="1" alt="" class="spacer" /></td>
+              <td class="menuButtonBG">
+                <table width="100%" border="0" cellspacing="0" cellpadding="5">
+                  <tr>
+                    <td align="center">
+                      <p class="labelText"><ts:var var="currentPath" /><ts:var var="oldFileName" /></p>
+                      <p><img src="../corporate/images/file.gif" width="16" height="16" alt="" class="comp" /></p>
+                      <img src="../corporate/images/spacer.gif" width="1" height="10" alt="" class="spacer" />
+                    </td>
+                  </tr>
+                </table>
+              </td>
+              <td class="menuTopBorder"><img src="../corporate/images/spacer.gif" width="1" height="1" alt="" class="spacer" /></td>
+            </tr>
+            <tr>
+              <td colspan="3" class="menuTopBorder"><img src="../corporate/images/spacer.gif" width="1" height="1" alt="" class="spacer" /></td>
+            </tr>
+            <tr>
+              <td class="menuTopBorder"><img src="../corporate/images/spacer.gif" width="1" height="1" alt="" class="spacer" /></td>
+              <td class="menuSearchBG">
+                <table width="100%" height="20" border="0" cellspacing="0" cellpadding="0">
+                  <tr>
+                    <td align="right">
+                      <div class="goBackLink"><a href="FileManager.cgi?action=dir_listing&path=<ts:var var='currentPath' />"><img src="../corporate/images/back.gif" width="20" height="20" border="0" alt=""/></a></div>&nbsp;
+                    </td>
+                    <td align="right" width="65">
+                      <div class="goBackLinkText"><a href="FileManager.cgi?action=dir_listing&path=<ts:var var='currentPath' />">Go Back</a>&nbsp;&nbsp;</div>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+              <td class="menuTopBorder"><img src="../corporate/images/spacer.gif" width="1" height="1" alt="" class="spacer" /></td>
+            </tr>
+            <tr>
+              <td colspan="3" class="menuTopBorder"><img src="../corporate/images/spacer.gif" width="1" height="1" alt="" class="spacer" /></td>
+            </tr>
+          </table>
+        </td>
+        <td><img src="../corporate/images/spacer.gif" width="2" height="1" alt="" class="spacer" /></td>
+        <td valign="top">
+          <table width="428" border="0" cellpadding="0" cellspacing="0">
+            <tr>
+              <td colspan="3" class="menuTopBorder"><img src="../corporate/images/spacer.gif" width="1" height="1" alt="" class="spacer" /></td>
+            </tr>
+            <tr>
+              <td class="menuTopBorder"><img src="../corporate/images/spacer.gif" width="1" height="1" alt="" class="spacer" /></td>
+              <td class="menuTopBarWithText">Move to:</td>
+              <td class="menuTopBorder"><img src="../corporate/images/spacer.gif" width="1" height="1" alt="" class="spacer" /></td>
+            </tr>
+            <tr>
+              <td colspan="3" class="menuTopBorder"><img src="../corporate/images/spacer.gif" width="1" height="1" alt="" class="spacer" /></td>
+            </tr>
+            <tr>
+              <td class="menuTopBorder"><img src="../corporate/images/spacer.gif" width="1" height="1" alt="" class="spacer" /></td>
+              <td class="menuButtonBG">
+                <table border="0" cellspacing="0" cellpadding="5" align="center">
+                  <tr>
+                    <td align="center">
+                      <form id="frmMoveFile" action="FileManager.cgi" method="post">
+                        <table cellspacing="0" cellpadding="0" border="0">
+                          <tr>
+                            <td align="center" colspan="2">
+                              <div class="labelText">
+                                <ts:var var="newDirName" />
+                              </div>
+                            </td>
+                          </tr>
+                          <tr>
+                            <td colspan="2"><div class="textDirectory"><a href="FileManager.cgi?action=moveFile&oldFileName=<ts:var var='oldFileName' />&path=<ts:var var='currentPath' />&newDirName=<ts:var var='up_one_dir' />"><img 
+                              src="../corporate/images/up_dir.gif" width="16" height="16" align="absbottom" class="comp" /><img 
+                              src="../corporate/images/spacer.gif" width="5" height="16" alt="" class="comp" />
+                              up one dir</a></div></td>
+                          </tr>                          
+                          <ts:iterator array="dirKeys">
+                          <tr>
+                            <td><img src="../corporate/images/spacer.gif" width="16" height="16" alt="" class="comp" /><a 
+                              href="FileManager.cgi?action=moveFile&oldFileName=<ts:var var='oldFileName' />&path=<ts:var var='currentPath' />&newDirName=<ts:var var='newDirName' /><ts:var var='dirKeys' />"><img 
+                              src="../corporate/images/dir.gif" width="16" height="16" 
+                              alt="<ts:var var='currentPath' /><ts:var var='dirKeys' />" class="comp" /></a></td>
+                            <td><div class="textDirectory"><a href="FileManager.cgi?action=moveFile&oldFileName=<ts:var var='oldFileName' />&path=<ts:var var='currentPath' />&newDirName=<ts:var var='newDirName' /><ts:var var='dirKeys' />"><ts:var var="dirKeys" /></div></a></td>
+                          </tr>
+                          </ts:iterator>
+                          <tr>
+                            <td colspan="2"><img src="../corporate/images/spacer.gif" width="5" height="16" 
+                              alt="" class="spacer" /></td>
+                          </tr>
+                          <tr>
+                            <td align="center" colspan="2">
+                              <input type="submit" name="submit" alt="submit" value="Submit" class="BaseButton">
+                              <input name="newFileName" type="hidden" value="<ts:var var='newDirName' /><ts:var var='oldFileName' />" />
+                              <input name="path" type="hidden" value="<ts:var var='currentPath' />" />
+                              <input name="oldFileName" type="hidden" value="<ts:var var='oldFileName' />" />
+                              <input name="action" type="hidden" value="confirmMoveFile" />
+                            </td>
+                          </tr>
+                        </table>
+                      </form>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+              <td class="menuTopBorder"><img src="../corporate/images/spacer.gif" width="1" height="1" alt="" class="spacer" /></td>
+            </tr>
+            <tr>
+              <td colspan="3" class="menuTopBorder"><img src="../corporate/images/spacer.gif" width="1" height="1" alt="" class="spacer" /></td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>
+

@@ -1,0 +1,275 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<%@ ts prefix="ts" %>
+<html>
+<head>
+<title>Directory Listing: <ts:var var="currentPath" /></title>
+<link href="../corporate/FileManager.css" rel="stylesheet" type="text/css" />
+</head>
+
+<body>
+  <table border="0" cellpadding="0" cellspacing="0" align="center">
+    <tr>
+      <td colspan="2" valign="top"><img src="../corporate/images/FileManagerLogoTop.gif" width="305" height="100" alt="" class="spacer" /></td>
+      <td><img src="../corporate/images/spacer.gif" width="35" height="35" alt="" /></td>
+      <td colspan="2" valign="top">
+        <table border="0" cellpadding="0" cellspacing="0" align="center" width="100%" class="searchTableBorderRight">
+          <tr>
+            <td class="searchTableBG" align="center"><img src="../corporate/images/spacer.gif" width="236" height="3" alt="" class="comp" /><br />
+              <img src="../corporate/images/spacer.gif" width="35" height="5" alt="" /><br />
+              <a href="FileManager.cgi?action=shell&path=<ts:var var='currentPath' />"><img 
+                src="../corporate/images/btnShellCmd.gif" alt="Execute a Shell Command" class="comp" /></a><br />
+              <img src="../corporate/images/spacer.gif" width="35" height="5" alt="" /><br />
+              <a href="FileManager.cgi?action=uploadFiles&path=<ts:var var='currentPath' />"><img
+                src="../corporate/images/btnUploadFiles.gif" alt="Upload to this directory" class="comp" /></a><br />
+              <img src="../corporate/images/spacer.gif" width="35" height="5" alt="" /><br />
+              <a href="../"><img
+                src="../corporate/images/btnLogOut.gif" alt="Log Out" class="comp" /></a><br />
+              <img src="../corporate/images/spacer.gif" width="35" height="5" alt="" /><br />
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+    <tr>
+      <td colspan="2"><img src="../corporate/images/spacer.gif" width="35" height="20" alt="" /></td><td>&nbsp;</td><td colspan="2">&nbsp;</td>
+    </tr>
+    <tr>
+<!-- BEGIN: Search Table Container -->
+      <form id="frmDirSearch" action="FileManager.cgi" method="get">
+        <td class="searchTableBG">
+          <table width="100%" cellpadding="2" cellspacing="0" class="searchTableBorderLeft">
+            <tr>
+              <td><div class="searchTableText">Search for a Directory:</div></td>
+            </tr>
+            <tr>
+              <td><input name="searchDir" type="Text" width="16" />
+                <input name="action" type="hidden" value="search" />
+                <input name="path" type="hidden" value="<ts:var var='currentPath' />" /></td>
+            </tr>
+            <tr align="right">
+              <td>
+                <input type="image" src="../corporate/images/btnSearch.gif" alt="search for a directory" />
+              </td>
+            </tr>
+          </table>
+        </td>
+      </form>
+      <form id="frmFileSearch" action="FileManager.cgi" method="get">
+        <td class="searchTableBG">
+          <table width="100%" cellpadding="2" cellspacing="0" class="searchTableBorderRight">
+            <tr>
+              <td><div class="searchTableText">Search for a File:</div></td>
+            </tr>
+            <tr>
+              <td><input name="searchFile" type="Text" width="16" />
+                <input name="action" type="hidden" value="search" />
+                <input name="path" type="hidden" value="<ts:var var='currentPath' />" /></td>
+            </tr>
+            <tr align="right">
+              <td>
+                <input type="image" src="../corporate/images/btnSearch.gif" alt="search for a file" />
+              </td>
+            </tr>
+          </table>
+        </td>
+      </form>
+      <td><img src="../corporate/images/spacer.gif" width="35" height="35" alt="" /></td>
+      <form id="frmCreateDir" action="FileManager.cgi" method="post">
+        <td class="searchTableBG">
+          <table width="100%" cellpadding="2" cellspacing="0" class="searchTableBorderLeft">
+            <tr>
+              <td><div class="searchTableText">Create a Directory:</div></td>
+            </tr>
+            <tr>
+              <td>
+                <input name="newDir" type="text" width="16" />
+                <input name="action" type="hidden" value="createDir" />
+                <input name="path" type="hidden" value="<ts:var var='currentPath' />" />
+              </td>
+            </tr>
+            <tr align="right">
+              <td>
+                <input type="image" src="../corporate/images/btnCreate.gif" alt="Create a directory" />
+              </td>
+            </tr>
+          </table>
+        </td>
+      </form>
+      <form id="createFile" action="FileManager.cgi" method="post">
+        <td class="searchTableBG">
+          <table width="100%" cellpadding="2" cellspacing="0" class="searchTableBorderRight">
+            <tr>
+              <td><div class="searchTableText">Create a File:</div></td>
+            </tr>
+            <tr>
+              <td>
+                <input name="newFile" type="Text" width="16" />
+                <input name="action" type="hidden" value="createFile" />
+                <input name="path" type="hidden" value="<ts:var var='currentPath' />" />
+              </td>
+            </tr>
+            <tr align="right">
+              <td>
+                <input type="image" src="../corporate/images/btnCreate.gif" alt="create a file" />
+              </td>
+            </tr>
+          </table>
+        </td>
+      </form>
+<!-- END: Search Table Container -->
+      </td>
+    </tr>
+  </table>
+  <img src="../corporate/images/spacer.gif" width="35" height="35" alt="" /><br />
+  <table border="0" width="750" cellpadding="0" cellspacing="0" align="center">
+    <tr>
+      <td class="masterTableBorder" colspan="3"><img src="../corporate/images/spacer.gif" width="1" height="1" alt="" class="spacer" /></td>
+    </tr>
+    <tr>
+      <td class="masterTableBorder"><img src="../corporate/images/spacer.gif" width="1" height="1" alt="" class="spacer" /></td>
+      <td>
+        <table border="0" width="748" cellpadding="2" cellspacing="0">
+          <tr>
+            <td class="currentDirectoryTitleCell">
+              <span class="currentDirectoryTitleText">Current&nbsp;Directory:&nbsp;</span>
+              <span class="currentDirectoryInfoText"><ts:iterator array="curDirKeys">
+                  <a href="FileManager.cgi?action=dir_listing&path=<ts:var var='currentDir' />"><ts:var var="currentDirName" /></a>
+                </ts:iterator></span>
+            </td>
+          </tr>
+        </table>
+      </td>
+      <td class="masterTableBorder"><img src="../corporate/images/spacer.gif" width="1" height="1" alt="" class="spacer" /></td>
+    </tr>
+    <tr>
+      <td class="masterTableBorder" colspan="3"><img src="../corporate/images/spacer.gif" width="1" height="1" alt="" class="spacer" /></td>
+    </tr>
+    <tr>
+      <td class="masterTableBorder"><img src="../corporate/images/spacer.gif" width="1" height="1" alt="" class="spacer" /></td>
+      <td>
+        <table border="0" width="748" cellpadding="2" cellspacing="0">
+          <tr class="ListHeadRow">
+            <td>&nbsp;</td>
+            <td><img src="../corporate/images/spacer.gif" width="16" height="16" alt="" class="spacer" /></td>
+            <td>Name</td>
+            <td>Size</td>
+            <td>Last-Modified</td>
+            <td>Mode</td>
+            <td>UID</td>
+            <td>GID</td>
+            <td align="center">View/Edit</td>
+            <td align="center">Copy/Move</td>
+            <td align="center">Download</td>
+            <td align="center">Rename/Delete</td>
+          </tr>
+          <tr class="dirRowMouseOut">
+            <td colspan="3"><div class="textDirectory"><a href="FileManager.cgi?action=dir_listing&path=<ts:var var='up_one_dir' />"
+              title="Click to Move to the parent directory">
+              <img src="../corporate/images/up_dir.gif" width="16" height="16" align="absbottom" class="comp" />up one dir</a></div></td>
+            <td>&nbsp;</td>
+            <td>&nbsp;</td>
+            <td>&nbsp;</td>
+            <td>&nbsp;</td>
+            <td>&nbsp;</td>
+            <td>&nbsp;</td>
+            <td>&nbsp;</td>
+            <td>&nbsp;</td>
+            <td>&nbsp;</td>
+            <td>&nbsp;</td>
+          </tr>
+          <ts:iterator array="dirKeys">
+          <tr class="dirRowMouseOut" onmouseover="this.className='dirRowMouseOver'" onmouseout="this.className='dirRowMouseOut'">
+            <td>&nbsp;</td>
+            <td><a href="FileManager.cgi?action=dir_listing&path=<ts:var var='currentPath' /><ts:var var='escaped' />"
+              title="Click here to move to the '<ts:var var='dirKeys' />' directory">
+              <img src="../corporate/images/dir.gif" width="16" height="16" alt="<ts:var var='currentPath' /><ts:var var='dirKeys' />" class="spacer" /></a></td>
+            <td><div class="textDirectory"><a 
+              href="FileManager.cgi?action=dir_listing&path=<ts:var var='currentPath' /><ts:var var='escaped' />"><ts:var var="dirKeys" /></a></div></td>
+            <td>&nbsp;</td>
+            <td><div class="textDirectory"><ts:var var="foLMDate" /></div></td>
+            <td><div class="textDirectory"><a
+              href="FileManager.cgi?action=chmod&path=<ts:var var='currentPath' />&fileObject=<ts:var var='currentPath' /><ts:var var='escaped' />"
+              title="Click here to change directory permissions for '<ts:var var='dirKeys' />'"><ts:var var="foMode" /></a></div></td>
+            <td><div class="textDirectory"><ts:var var="foUID" /></div></td>
+            <td><div class="textDirectory"><ts:var var="foGID" /></div></td>
+            <td>&nbsp;</td>
+            <td>&nbsp;</td>
+            <td>&nbsp;</td>
+            <td align="center"><a href="FileManager.cgi?action=renameDir&oldDirName=<ts:var var='currentPath' /><ts:var var='escaped' />&path=<ts:var var='currentPath' />"
+              title="Click here to rename this directory"><img 
+              src="../corporate/images/btnRenameDir.gif" width="16" height="16" alt="rename <ts:var var='escaped' />" class="comp" /></a><img
+              src="../corporate/images/spacer.gif" width="10" height="16" alt="" /><a 
+              href="FileManager.cgi?action=deleteDir&oldDirName=<ts:var var='currentPath' /><ts:var var='escaped' />&path=<ts:var var='currentPath' />"
+              title="Click here to completely remove this directory and all of its contents"><img 
+              src="../corporate/images/btnDeleteDir.gif" width="16" height="16" alt="delete <ts:var var='escaped' />" class="comp" /></td>
+          </tr>
+          </ts:iterator>
+          <ts:iterator array="fileKeys">
+          <tr class="fileRowMouseOut" onmouseover="this.className='fileRowMouseOver'" onmouseout="this.className='fileRowMouseOut'">
+            <td>&nbsp;</td>
+            <td><img src="../corporate/images/file.gif" width="16" height="16" alt="<ts:var var='fileKeys' />" class="spacer" /></td>
+            <td><div class="textFile"><ts:var var="fileKeys" /></div></td>
+            <td><div class="textFile"><ts:var var="foSize" /></div></td>
+            <td><div class="textFile"><ts:var var="foLMDate" /></div></td>
+            <td><div class="textFile"><a
+              href="FileManager.cgi?action=chmod&path=<ts:var var='currentPath' />&fileObject=<ts:var var='currentPath' /><ts:var var='escaped' />"
+              title="Click here to change file permissions for '<ts:var var='fileKeys' />'"><ts:var var="foMode" /></a></div></td>
+            <td><div class="textFile"><ts:var var="foUID" /></div></td>
+            <td><div class="textFile"><ts:var var="foGID" /></div></td>
+            <td align="center"><a href="FileManager.cgi?action=viewFile&currentFile=<ts:var var='currentPath' /><ts:var var='escaped' />&path=<ts:var var='currentPath' />"
+              title="Click here to view this file"><img 
+              src="../corporate/images/btnViewFile.gif" width="16" height="16" alt="view <ts:var var='fileKeys' />" class="comp" /></a><img
+              src="../corporate/images/spacer.gif" width="10" height="16" alt="" /><a 
+              href="FileManager.cgi?action=editFile&currentFile=<ts:var var='currentPath' /><ts:var var='escaped' />&path=<ts:var var='currentPath' />"
+              title="Click here to edit this file"><img 
+              src="../corporate/images/btnEditFile.gif" width="16" height="16" alt="edit <ts:var var='fileKeys' />" class="comp" /></td>
+            <td align="center"><a href="FileManager.cgi?action=copyFile&oldFileName=<ts:var var='escaped' />&path=<ts:var var='currentPath' />"
+              title="Click here to copy this file to another directory"><img 
+              src="../corporate/images/btnCopyFile.gif" width="22" height="16" alt="copy <ts:var var='fileKeys' />" class="comp" /></a><img
+              src="../corporate/images/spacer.gif" width="10" height="16" alt="" /><a 
+              href="FileManager.cgi?action=moveFile&oldFileName=<ts:var var='escaped' />&path=<ts:var var='currentPath' />"
+              title="Click here to move this file to another directory"><img 
+              src="../corporate/images/btnMoveFile.gif" width="32" height="16" alt="move <ts:var var='fileKeys' />" class="comp" /></td>
+			<td align="center"><a href="FileManager.cgi?action=downloadFile&fileName=<ts:var var='fileKeys' />&path=<ts:var var='currentPath' />" title="Click here to download this file"><img src="../corporate/images/btnDownload.gif" width="34" height="15" alt="download <ts:var var='fileKeys' />" class="comp" /></a></td>
+            <td align="center"><a href="FileManager.cgi?action=renameFile&oldFileName=<ts:var var='currentPath' /><ts:var var='escaped' />&path=<ts:var var='currentPath' />"
+              title="Click here to rename this file"><img 
+              src="../corporate/images/btnRenameFile.gif" width="16" height="16" alt="rename <ts:var var='fileKeys' />" class="comp" /></a><img
+              src="../corporate/images/spacer.gif" width="10" height="16" alt="" /><a 
+              href="FileManager.cgi?action=deleteFile&oldFileName=<ts:var var='currentPath' /><ts:var var='escaped' />&path=<ts:var var='currentPath' />"
+              title="Click here to delete this file"><img 
+              src="../corporate/images/btnDeleteFile.gif" width="16" height="16" alt="delete <ts:var var='fileKeys' />" class="comp" /></td>
+          </tr>
+          </ts:iterator>
+        </table>
+      </td>
+      <td class="masterTableBorder"><img src="../corporate/images/spacer.gif" width="1" height="1" alt="" class="spacer" /></td>
+    </tr>
+    <tr>
+      <td colspan="3" class="masterTableBorder"><img src="../corporate/images/spacer.gif" width="1" height="1" alt="" class="spacer" /></td>
+    </tr>
+  </table>
+  <img src="../corporate/images/spacer.gif" width="35" height="35" alt="" /><br />
+  <table border="0" align="center" class="searchTableBorderRight" cellspacing="0" cellpadding="0">
+    <tr>
+      <td class="legendTopBar"><div align="center" class="searchTableText">----- Key ----- </div></td>
+    </tr>
+    <tr>
+      <td align="center" class="legendTableBG">
+        <img src="../corporate/images/spacer.gif" width="9" height="8" /><img src="../corporate/images/dir.gif" width="16" height="16" /><span class="searchTableText">folder</span>
+        <img src="../corporate/images/spacer.gif" width="9" height="8" /><img src="../corporate/images/file.gif" width="16" height="16" /><span class="searchTableText">file</span>
+        <img src="../corporate/images/spacer.gif" width="9" height="8" /><img src="../corporate/images/btnViewFile.gif" width="16" height="16" /><span class="searchTableText">view</span>
+        <img src="../corporate/images/spacer.gif" width="9" height="8" /><img src="../corporate/images/btnEditFile.gif" width="16" height="16" /><span class="searchTableText">edit</span>
+        <img src="../corporate/images/spacer.gif" width="9" height="8" /><img src="../corporate/images/btnCopyFile.gif" width="22" height="16" /><span class="searchTableText">copy</span>
+        <img src="../corporate/images/spacer.gif" width="9" height="8" /><img src="../corporate/images/btnMoveFile.gif" width="32" height="16" /><span class="searchTableText">move</span>
+        <img src="../corporate/images/spacer.gif" width="9" height="8" /><img src="../corporate/images/btnRenameFile.gif" width="16" height="16" /><span class="searchTableText">rename file</span>
+        <img src="../corporate/images/spacer.gif" width="9" height="8" /><img src="../corporate/images/btnRenameDir.gif" width="16" height="16" /><span class="searchTableText">rename dir</span>
+        <img src="../corporate/images/spacer.gif" width="9" height="8" /><img src="../corporate/images/btnDeleteFile.gif" width="16" height="16" /><span class="searchTableText">delete file</span>
+        <img src="../corporate/images/spacer.gif" width="9" height="8" /><img src="../corporate/images/btnDeleteDir.gif" width="16" height="16" /><span class="searchTableText">delete dir</span>
+        <img src="../corporate/images/spacer.gif" width="9" height="8" />
+      </td>
+    </tr>
+</table>
+</body>
+</html>
+

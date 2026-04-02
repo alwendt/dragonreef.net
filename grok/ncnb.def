@@ -1,0 +1,32 @@
+% correct anything to anything else for 3
+%correct	.	.	3
+ 
+% a number of common numeric misreads.  4 is often read as (+
+% but we cannot correct string to string.
+%correct	"Z"	"2"	1
+%correct	"z"	"2"	1
+%correct	"S"	"5"	1
+%correct	"s"	"5"	1
+%correct	"l"	"1"	1
+%correct	"i"	"1"	1
+%correct	"I"	"1"	1
+%correct	"o"	"0"	1
+%correct	"O"	"0"	1
+%correct	"r"	"5"	1
+%correct	"?"	"9"	1
+%correct	"+"	"4"	1
+
+% default insertion cost is 2
+%insert		.	2
+
+% charge extra for numbers to avoid hallucinations.
+%insert		[0-9]	3
+
+% delete anything for 2.  correct cost <= insert + delete.
+%delete		.	2
+%delete		[0-9]	3
+
+% the maximum tolerable error cost 
+%tolerance	20
+%%
+([ ]{20,30}[+ ]([ ]{5,7}[0-9]{5}|"NO ITEM # ")[ ]{3,4}[0-9]{9}[ ]{5,7}[0-1][0-9]-[0-3][0-9][ ]{6,13}(""|[1-9][0-9]{0,2}|[1-9][0-9]{0,2}","[0-9]{3})\.[0-9]{2}([ ]{5,10}[+ ]([ ]{5,7}[0-9]{5}|"NO ITEM # ")[ ]{3,4}[0-9]{9}[ ]{5,7}[0-1][0-9]-[0-3][0-9][ ]{6,13}(""|[1-9][0-9]{0,2}|[1-9][0-9]{0,2}","[0-9]{3})\.[0-9]{2})?)|("       ENCLOSED           NUMBER        NUMBER".*)

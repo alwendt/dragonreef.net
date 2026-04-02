@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<%@ ts prefix="ts" %>
+<html>
+<head>
+<title>Execute a Shell Command</title>
+<link href="../corporate/FileManager.css" rel="stylesheet" type="text/css" />
+</head>
+
+<body>
+  <table width="750" border="0" cellpadding="0" cellspacing="0" align="center">
+    <tr>
+      <td align="center">
+        <table width="428" border="0" cellpadding="0" cellspacing="0">
+          <tr>
+            <td colspan="3" class="menuTopBorder"><img src="../corporate/images/spacer.gif" width="1" height="1" alt="" class="spacer" /></td>
+          </tr>
+          <tr>
+            <td class="menuTopBorder"><img src="../corporate/images/spacer.gif" width="1" height="1" alt="" class="spacer" /></td>
+            <td class="menuTopBarWithText">Execute a Command</td>
+            <td class="menuTopBorder"><img src="../corporate/images/spacer.gif" width="1" height="1" alt="" class="spacer" /></td>
+          </tr>
+          <tr>
+            <td colspan="3" class="menuTopBorder"><img src="../corporate/images/spacer.gif" width="1" height="1" alt="" class="spacer" /></td>
+          </tr>
+          <tr>
+            <td class="menuTopBorder"><img src="../corporate/images/spacer.gif" width="1" height="1" alt="" class="spacer" /></td>
+            <td class="menuButtonBG">
+              <table width="100%" border="0" cellspacing="0" cellpadding="5">
+                <tr>
+                  <td align="center">
+                    <form id="frmShellScript" action="FileManager.cgi" method="post">
+                      <div class="titleText">WARNING!</div>
+                      <div class="labelText">Using this feature can severely damage your account 
+                        if you do not know what you are doing! Only use this feature if you know 
+                        EXACTLY what you are doing or if prompted to do so by Technical Support.</div>
+                       <p class="titleText">Current directory is: <ts:var var='currentPath' /></p>
+                      <img src="../corporate/images/spacer.gif" width="16" height="16" alt="" class="comp" /><br />
+                      <span class="labelText">Enter Shell Command: </span>
+                      <input name="shellCommand" type="text" width="25" />&nbsp;&nbsp;
+                      <input type="submit" value="Submit" class="BaseButton"/>
+                      <input name="path" type="hidden" value="<ts:var var='currentPath' />" />
+                      <input type="hidden" name="action" value="executeCommand" />
+                      <img src="../corporate/images/spacer.gif" width="16" height="16" alt="" class="comp" /><br />
+                    </form>
+                  </td>
+                </tr>
+              </table>
+            </td>
+            <td class="menuTopBorder"><img src="../corporate/images/spacer.gif" width="1" height="1" alt="" class="spacer" /></td>
+          </tr>
+          <tr>
+            <td colspan="3" class="menuTopBorder"><img src="../corporate/images/spacer.gif" width="1" height="1" alt="" class="spacer" /></td>
+          </tr>
+          <tr>
+            <td class="menuTopBorder"><img src="../corporate/images/spacer.gif" width="1" height="1" alt="" class="spacer" /></td>
+            <td class="menuSearchBG">
+              <table width="100%" height="20" border="0" cellspacing="0" cellpadding="0">
+                <tr>
+                  <td align="right">
+                      <div class="goBackLink"><a href="FileManager.cgi?action=dir_listing&path=<ts:var var='currentPath' />"><img src="../corporate/images/back.gif" width="20" height="20" border="0" alt=""/></a></div>&nbsp;
+                    </td>
+                    <td align="right" width="65">
+                      <div class="goBackLinkText"><a href="FileManager.cgi?action=dir_listing&path=<ts:var var='currentPath' />">Go Back</a>&nbsp;&nbsp;</div>
+                    </td>
+                </tr>
+              </table>
+            </td>
+            <td class="menuTopBorder"><img src="../corporate/images/spacer.gif" width="1" height="1" alt="" class="spacer" /></td>
+          </tr>
+          <tr>
+            <td colspan="3" class="menuTopBorder"><img src="../corporate/images/spacer.gif" width="1" height="1" alt="" class="spacer" /></td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+    <tr>
+      <td colspan="2"><img src="../corporate/images/spacer.gif" width="20" height="20" alt="" class="comp" /><br />
+        <div class="titleText">RESULT:</div>
+        <pre>
+<ts:var var="command_result" />
+        </pre>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+

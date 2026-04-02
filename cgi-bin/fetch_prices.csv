@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+query="${QUERY_STRING:-}"
+raw_ticker=""
+if [[ -n "$query" ]]; then
+  raw_ticker=$(printf "%s" "$query" | tr '&' '\n' | awk -F= '$1 == "t" { print $2; exit }')
+fi
+
+raw_ticker=$(printf "%s" "$raw_ticker" | tr '+' ' ')
+raw_ticker=$(printf "%s" "$raw_ticker" | sed -e 's/%/\\x/g')
+raw_ticker=$(printf "%b" "$raw_ticker")
+
+upper=$(printf "%s" "$raw_ticker" | tr '[:lower:]' '[:upper:]')
+cleaned=$(printf "%s" "$upper" | sed 's/[^A-Z0-9.\-]//g')
+
+if [[ -z "$cleaned" ]]; then
+  cleaned="VOO"
+fi
+
+cache_root="/opt/tomcat/webapps/ROOT/WEB-INF/chart-cache"
+cache_file="${cache_root}/${cleaned}.csv"
+
+if [[ ! -s "$cache_file" ]] || [[ $(wc -l < "$cache_file") -le 1 ]]; then
+  printf "Status: 502 Bad Gateway\n"
+  printf "Content-Type: text/plain\n\n"
+  printf "No cached CSV is available for %s.\n" "$cleaned"
+  exit 1
+fi
+
+printf "Content-Type: text/plain\n"
+printf "X-Data-Source: %s\n\n" "Cached daily (${cleaned})"
+cat "$cache_file"

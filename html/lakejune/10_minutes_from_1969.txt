@@ -1,0 +1,279 @@
+From: "Jonathan M." <write@instead>
+Newsgroups: alt.arts.poetry.comments
+Subject: Ten Minutes from 1969
+Date: Sun, 17 Feb 2002 17:48:17 -0500
+Organization: no
+Lines: 265
+Message-ID: <a4pc2h$cgp$0@dosa.alt.net>
+X-Priority: 3
+X-MSMail-Priority: Normal
+X-Newsreader: Microsoft Outlook Express 6.00.2600.0000
+X-MimeOLE: Produced By Microsoft MimeOLE V6.00.2600.0000
+
+
+
+
+Eagle, houston, do you read ?
+Eagle, this is houston.
+Eagle, houston, do you read?
+Eagle, houston, do you copy ?
+
+roger, we copy.
+
+Eagle, houston, can we
+get a status on your burn ?
+
+Good burn, houston, on time, no residuals.
+
+Alright 10 minutes to powered descent.
+Let's get their sun check and then go around the horn.
+
+Eagle, this is houston we're ready for that sun check.
+
+Roger, houston, sun check to three marks...
+Noun 20 minus noun 22, plus 0.19, plus 0.16.
+
+Eagle, houston. We only copied three of the marks.
+Please repeat the sun check, over.
+
+Houston, eagle, how do you read now ?
+
+Eagle, we're getting oscillations in your high gain.
+( Heavy static )
+
+flight, telmu, we've lost misfin.
+
+Roger, we've lost misfin. Flight, guidance, I've
+lost data. We keep losing them, flight.
+Clock's running, fellas.
+I want a go/no go for powered descent.
+
+Columbia, this is houston. We've lost all
+data with eagle. Please have him reacquire on
+high gain, over.
+
+Eagle, this is columbia. Houston would like you to
+reacquire on the high gain. They've lost data
+with you, over.
+
+Rog, we copy. Houston, eagle, how do you read me now ?
+
+you got us locked up there, telmu ?
+We're just real weak, flight.
+
+How are you looking ?
+All your systems go ?
+That's affirm, flight.
+Guidance, you happy ?
+Go, flight.
+Fido, how about you ?
+We're a little low, but no problem.
+Rog, eecom ?
+Go, flight.
+Gnc ?
+Go.
+Surgeon ?
+We're go.
+We are go for powered descent.
+
+Eagle, houston, if you read you are go for
+powered descent.
+
+Roger, understand.
+
+Stabilization and control circuit breakers deca
+gimbal ac, closed.
+Deca gimbal ac, closed.
+Command override, off.
+Command override is off.
+Gimbal enable.
+Gimbal enable.
+Rate scale, twenty-five.
+Twenty-five.
+Thrust translation, four jets.
+Four jets.
+Balance couple, on.
+Balance couple is on.
+Tca throttle, minimum.
+Throttle's at minimum.
+Throttle auto cdr.
+Auto cdr.
+Stop button reset.
+Stop button is reset.
+Abort, abort stage, reset.
+Abort, abort stage reset.
+Engine arm, descent.
+
+Seven seconds.
+
+Yes, proceed.
+
+Proceed.
+
+Five, four, three, two, one, zero.
+
+Ignition.
+
+Throttle up.
+Looks good.
+
+Eagle, your burn looks good.
+Okay, rate of descent looks good.
+Ags and pings agree very closely.
+Rcs is good, no flags.
+Dips pressure is good.
+
+Eagle, you are still looking good coming up on
+three minutes, over.
+
+We went by our three minute point early.
+We're gonna land long. houston, our
+position checks downrange show us to be a
+little long. We are going to roll over and have
+you check our altitude.
+
+Roger, we copy.
+
+Rolling over.
+
+Houston, you're looking at our delta h.
+Flight, radar looks good. 2,000 feet delta h.
+Rog, 2,000 foot delta H.
+Let me know when he accepts it, guidance.
+
+( Master Alarm )
+
+program alarm, it's at 12-0-2.
+12-0-2.
+12-0-2, jack, is that radar ?
+We didn't have this in the sim.
+What is it ?
+Give us a reading on a 12-0-2 program alarm.
+It's, it's, it's... We had it with the twelve
+crew, it's a temporary overload. It's not fatal.
+We're okay as long as it's intermittent.
+
+We're go on that, flight.
+We're go on that alarm ?
+If it's only intermittent, we'll be go.
+
+Eagle, houston, we are go on that alarm.
+
+Roger. Ags and pings look real close.
+Give us a pitchover time please, houston.
+
+Eagle, you are 30 seconds to p-64.
+
+Roger, and I've got the window.
+
+Roger, we've got good data.
+We're looking good  and coming up on eight-thirty.
+P-64.
+Okay, 5,000 feet is good.
+100 feet per second is good.
+
+Okay, I want a go/no go on landing.
+
+Guido ?
+Go, flight.
+Retro ?
+We're go, flight.
+Booster ?
+Go, flight.
+Telmu ?
+That's affirm, flight.
+Gnc ?
+Go.
+Eecom ?
+Go, flight.
+Surgeon ?
+Go, flight.
+Capcom, go.
+
+Eagle, houston, you are go for landing.
+
+Go for landing, over.
+Roger, understand, go for landing.
+
+3,000 feet.
+Give me an lpd.
+47 degrees.
+Pretty rocky area.
+I'm going to manual.
+Roger, eagle.
+58 forward.
+No problem.
+600 feet
+down at nineteen.
+
+(Master Alarm)
+
+Program alarm. 12-0-1.
+guidance, are your systems go ?
+Same type, we're go, flight.
+Go.
+We are go, same type.
+We are go.
+
+Okay, you're pegged on horizontal velocity.
+300 feet,
+down three and a half.
+47 forward, slow it up.
+One and a half down.
+Ease her down.
+250,
+how's the fuel ?
+Seven percent fuel remaining.
+Down at two and a half, 19 forward.
+Altitude velocity lights are on.
+We lost our radar.
+Three and a half down.
+220 feet,
+13 forward.
+We're gonna be right over that crater.
+160 feet,
+five and a half down.
+Quantity light.
+60 seconds to go/no go.
+Looks like a good area here.
+Take her down.
+60 feet,
+down two and a half.
+Two forward, two forward.
+40 feet,
+down two and a half.
+30 seconds of fuel.
+Four forward, four forward !
+Drifting to the right a little.
+20 feet down.
+Picking up some dust.
+Can't see.
+
+Contact light.
+Shut down.
+Okay, engine off.
+Aca out of detent.
+Out of detent, auto.
+Mode control both auto ?
+Both auto.
+Descent engine command override off.
+Command override off.
+Engine arm, off.
+Engine arm, off.
+Four thirteen is in.
+
+We copy you down, eagle.
+
+
+
+Houston, tranquility base here. The eagle has landed.
+
+
+
+
+
+
+
+
+
+

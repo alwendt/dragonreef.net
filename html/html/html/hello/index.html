@@ -1,0 +1,55 @@
+<!doctype html public "-//w3c//dtd html 4.0 transitional//en">
+<html>
+<head>
+
+
+<script src="https://unpkg.com/@optimizely/optimizely-sdk/dist/optimizely.browser.umd.js"></script>
+
+<script>
+const url = 'https://cdn.optimizely.com/datafiles/A2oVJzT4eGbMJEcNA6sJVo.json';
+window
+  .fetch(url, { mode: 'cors' })
+    .then(response => response.json())
+      .then(datafile => {
+          window.optimizelyClientInstance = window.optimizelyClient.createInstance({
+                datafile,
+                    });
+
+          // random user id between 1 and 10000
+          var userId = (Math.floor(Math.random() * 10000) + 1) + "";
+
+          // Evaluate a feature flag and a variable
+          var feature_enabled = window.optimizelyClientInstance.isFeatureEnabled('changebordercolor', userId);
+          var tags = {};
+
+          if (feature_enabled) {
+              window.color = optimizelyClientInstance.getFeatureVariableString('changebordercolor', 'color', userId);
+              document.getElementById("hello").innerHTML = "<div id='hello'>Color is now " + window.color + "</div>";
+          }
+
+          if (window.color == "#00ff00") { 
+              tags.revenue = 10000;
+          } else {
+              tags.revenue = 20000;
+          }
+
+          // track revenue
+          optimizelyClientInstance.track("colorEvent", userId, null, tags);
+
+      });
+
+</script>
+
+</head>
+
+<body bgcolor="#CCCCFF" background=image001.jpg lang=EN-US link="#0000EE" vlink=blue style='tab-interval:.5in' alink="#FF0000">
+
+
+<div id="hello">Color is default</div>
+
+
+</body>
+
+</html>
+
+

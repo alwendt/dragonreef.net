@@ -1,0 +1,284 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<%@ ts prefix="ts" %>
+<html>
+<head>
+<title>CHMOD <ts:var var="fileObject" /></title>
+<link href="../corporate/FileManager.css" rel="stylesheet" type="text/css" />
+</head>
+
+  <body>
+    <table width="750" border="0" cellpadding="0" cellspacing="0" align="center">
+      <tr>
+        <td align="center">
+          <table width="428" border="0" cellpadding="0" cellspacing="0">
+            <tr>
+              <td colspan="3" class="menuTopBorder"><img src="../corporate/images/spacer.gif" width="1" height="1" alt="" class="spacer" /></td>
+            </tr>
+            <tr>
+              <td class="menuTopBorder"><img src="../corporate/images/spacer.gif" width="1" height="1" alt="" class="spacer" /></td>
+              <td class="menuTopBar"><img src="../corporate/images/spacer.gif" width="426" height="20" alt="" class="spacer" /></td>
+              <td class="menuTopBorder"><img src="../corporate/images/spacer.gif" width="1" height="1" alt="" class="spacer" /></td>
+            </tr>
+            <tr>
+              <td colspan="3" class="menuTopBorder"><img src="../corporate/images/spacer.gif" width="1" height="1" alt="" class="spacer" /></td>
+            </tr>
+            <tr>
+              <td class="menuTopBorder"><img src="../corporate/images/spacer.gif" width="1" height="1" alt="" class="spacer" /></td>
+              <td class="menuButtonBG">
+                <table width="100%" border="0" cellspacing="0" cellpadding="5">
+                  <tr>
+                    <td align="center">
+                      <form id="frmRenameDir" action="FileManager.cgi" method="post">
+                      <p class="titleText">CHMOD <ts:var var="fileObject" /></p>
+                        <table callspacing="0" cellpadding="3">
+                          <tr>
+                            <td align="center"><div class="labelText">&nbsp;</div></td>
+                            <td align="center"><img src="../corporate/images/spacer.gif" width="50" height="1" alt="" class="spacer" />
+                              <div class="labelText">Owner</div></td>
+                            <td align="center"><img src="../corporate/images/spacer.gif" width="50" height="1" alt="" class="spacer" />
+                              <div class="labelText">Group</div></td>
+                            <td align="center"><img src="../corporate/images/spacer.gif" width="50" height="1" alt="" class="spacer" />
+                              <div class="labelText">All</div></td>
+                          </tr>
+                          <tr>
+                            <td align="right"><img src="../corporate/images/spacer.gif" width="1" height="25" alt="" class="comp" align="absmiddle" />
+                              <span class="labelText">Read</span></td>
+                            <td align="center"><input type="checkbox" name="or" id="or" value="1" 
+                              onclick="refreshMod()" <ts:var var="or" /> /></td>
+                            <td align="center"><input type="checkbox" name="gr" id="gr" value="1" 
+                              onclick="refreshMod()" <ts:var var="gr" /> /></td>
+                            <td align="center"><input type="checkbox" name="ar" id="ar" value="1" 
+                              onclick="refreshMod()" <ts:var var="ar" /> /></td>
+                          </tr>
+                          <tr>
+                            <td align="right"><img src="../corporate/images/spacer.gif" width="1" height="25" alt="" class="comp" align="absmiddle" />
+                              <span class="labelText">Write</span></td>
+                            <td align="center"><input type="checkbox" name="ow" id="ow" value="1" 
+                              onclick="refreshMod()" <ts:var var="ow" /> /></td>
+                            <td align="center"><input type="checkbox" name="gw" id="gw" value="1" 
+                              onclick="refreshMod()" <ts:var var="gw" /> /></td>
+                            <td align="center"><input type="checkbox" name="aw" id="aw" value="1" 
+                              onclick="refreshMod()" <ts:var var="aw" /> /></td>
+                          </tr>
+                          <tr>
+                            <td align="right"><img src="../corporate/images/spacer.gif" width="1" height="25" alt="" class="comp" align="absmiddle" />
+                              <span class="labelText">Execute</span></td>
+                            <td align="center"><input type="checkbox" name="ox" id="ox" value="1" 
+                              onclick="refreshMod()" <ts:var var="ox" /> /></td>
+                            <td align="center"><input type="checkbox" name="gx" id="gx" value="1" 
+                              onclick="refreshMod()" <ts:var var="gx" /> /></td>
+                            <td align="center"><input type="checkbox" name="ax" id="ax" value="1" 
+                              onclick="refreshMod()" <ts:var var="ax" /> /></td>
+                          </tr>
+                        </table>
+                        <img src="../corporate/images/spacer.gif" width="10" height="10" alt="" class="comp" /><br />
+                        <input type="text" name="numMod" id="numMod" size="3" maxlength="3" onkeyup="refreshMod(this)" /><br />
+                        <img src="../corporate/images/spacer.gif" width="15" height="15" alt="" class="comp" /><br />
+                        <input type="submit" name="submit" alt="submit" value="Submit" class="BaseButton">
+                        <input name="path" type="hidden" value="<ts:var var='currentPath' />" />
+                        <input name="action" type="hidden" value="confirmChmod" />
+                        <input name="fileObject" type="hidden" value="<ts:var var='fileObject' />" />
+                      </form>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+              <td class="menuTopBorder"><img src="../corporate/images/spacer.gif" width="1" height="1" alt="" class="spacer" /></td>
+            </tr>
+            <tr>
+              <td colspan="3" class="menuTopBorder"><img src="../corporate/images/spacer.gif" width="1" height="1" alt="" class="spacer" /></td>
+            </tr>
+            <tr>
+              <td class="menuTopBorder"><img src="../corporate/images/spacer.gif" width="1" height="1" alt="" class="spacer" /></td>
+              <td class="menuSearchBG">
+                <table width="100%" height="20" border="0" cellspacing="0" cellpadding="0">
+                  <tr>
+                    <td align="right">
+                      <div class="goBackLink"><a href="FileManager.cgi?action=dir_listing&path=<ts:var var='currentPath' />"><img src="../corporate/images/back.gif" width="20" height="20" border="0" alt=""/></a></div>&nbsp;
+                    </td>
+                    <td align="right" width="65">
+                      <div class="goBackLinkText"><a href="FileManager.cgi?action=dir_listing&path=<ts:var var='currentPath' />">Go Back</a>&nbsp;&nbsp;</div>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+              <td class="menuTopBorder"><img src="../corporate/images/spacer.gif" width="1" height="1" alt="" class="spacer" /></td>
+            </tr>
+            <tr>
+              <td colspan="3" class="menuTopBorder"><img src="../corporate/images/spacer.gif" width="1" height="1" alt="" class="spacer" /></td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+    <script type="text/javascript">
+      var or = document.getElementById('or');
+      var ow = document.getElementById('ow');
+      var ox = document.getElementById('ox');
+      
+      var gr = document.getElementById('gr');
+      var gw = document.getElementById('gw');
+      var gx = document.getElementById('gx');
+      
+      var ar = document.getElementById('ar');
+      var aw = document.getElementById('aw');
+      var ax = document.getElementById('ax');
+      
+      var numMod = document.getElementById('numMod');
+      
+      var readVal  = 4;
+      var writeVal = 2;
+      var exeVal   = 1;
+      
+      calculateChecks();
+      
+      function refreshMod(obj) {
+        if (obj) {
+          var ok_to_go = new Boolean(true);
+          
+          var modo = numMod.value.charAt(0);
+          var modg = numMod.value.charAt(1);
+          var moda = numMod.value.charAt(2);
+          
+          if (!modo || !modg || !moda) {
+            return;
+          }
+          
+          var myVars = [modo, modg, moda];
+          
+          for (var i = 0; i < myVars.length; i++) {
+            if (myVars[i] != readVal && myVars[i] != writeVal && myVars[i] != exeVal &&
+                myVars[i] != (readVal + writeVal) && myVars[i] != (readVal + exeVal) &&
+                myVars[i] != (writeVal + exeVal) && myVars[i] != (readVal + writeVal + exeVal) &&
+                myVars[i] != 0) {
+              ok_to_go = false;
+            }
+          }
+          
+          if (ok_to_go == true) {
+            calculateNum(numMod.value);
+          } else {
+            return;
+          }
+        } else {
+          calculateChecks();
+        }
+      }
+      
+      function calculateChecks() {
+        var modoObj = new Object();
+        var modgObj = new Object();
+        var modaObj = new Object();
+        
+        modoObj.name  = 'owner';
+        modoObj.read  = or.checked;
+        modoObj.write = ow.checked;
+        modoObj.exe   = ox.checked;
+        modoObj.val   = 0;
+        
+        modgObj.name  = 'group';
+        modgObj.read  = gr.checked;
+        modgObj.write = gw.checked;
+        modgObj.exe   = gx.checked;
+        modgObj.val   = 0;
+        
+        modaObj.name  = 'all';
+        modaObj.read  = ar.checked;
+        modaObj.write = aw.checked;
+        modaObj.exe   = ax.checked;
+        modaObj.val   = 0;
+        
+        var modObjs = [modoObj, modgObj, modaObj];
+        
+        for (var i = 0; i < modObjs.length; i++) {
+          //alert("Object: " + modObjs[i].name);
+          
+          if (modObjs[i].read) {
+            modObjs[i].val += readVal;
+          }
+          
+          if (modObjs[i].write) {
+            modObjs[i].val += writeVal;
+          }
+          
+          if (modObjs[i].exe) {
+            modObjs[i].val += exeVal;
+          }
+        }
+        
+        numMod.value = modoObj.val + '' + modgObj.val + '' + modaObj.val;
+      }
+      
+      function calculateNum(value) {
+        var modo = value.charAt(0);
+        var modg = value.charAt(1);
+        var moda = value.charAt(2);
+        
+        var modoObj = new Object();
+        var modgObj = new Object();
+        var modaObj = new Object();
+        
+        or.checked = false;
+        ow.checked = false;
+        ox.checked = false;
+        gr.checked = false;
+        gw.checked = false;
+        gx.checked = false;
+        ar.checked = false;
+        aw.checked = false;
+        ax.checked = false;
+        
+        modoObj.name  = 'owner';
+        modoObj.read  = or;
+        modoObj.write = ow;
+        modoObj.exe   = ox;
+        modoObj.val   = modo;
+        
+        modgObj.name  = 'group';
+        modgObj.read  = gr;
+        modgObj.write = gw;
+        modgObj.exe   = gx;
+        modgObj.val   = modg;
+        
+        modaObj.name  = 'all';
+        modaObj.read  = ar;
+        modaObj.write = aw;
+        modaObj.exe   = ax;
+        modaObj.val   = moda;
+        
+        var modObjs = [modoObj, modgObj, modaObj];
+      
+        for (var i = 0; i < modObjs.length; i++) {
+          switch (modObjs[i].val) {
+            case '1': modObjs[i].exe.checked   = true;
+                           break;
+            case '2': modObjs[i].write.checked = true;
+                           break;
+            case '4': modObjs[i].read.checked  = true;
+                           break;
+            case '6':
+                           modObjs[i].read.checked  = true;
+                           modObjs[i].write.checked = true;
+                           break;
+            case '5':
+                           modObjs[i].read.checked  = true;
+                           modObjs[i].exe.checked   = true;
+                           break;
+            case '3':
+                           modObjs[i].write.checked = true;
+                           modObjs[i].exe.checked   = true;
+                           break;
+            case '7':
+                           modObjs[i].read.checked  = true;
+                           modObjs[i].write.checked = true;
+                           modObjs[i].exe.checked   = true;
+                           break;
+            default: calculateChecks();
+          }
+        }
+      }
+    </script>
+  </body>
+</html>
+

@@ -1,0 +1,149 @@
+                                    Alan L. Wendt
+                                  1517 N Wilmot #306
+                                 Tucson, Arizona 85712
+                                    (520) 907-7640
+                             smartasasackofhammers@gmail.com
+
+
+EDUCATION
+
+    M.S. 1984, Ph.D. 1988, University of Arizona
+        Dissertation: A Retargetable Optimizing Code Generator.
+        Advisor:      Christopher W. Fraser
+
+    B.S. University of Florida, 1975
+
+LANGUAGES
+
+    C, Java, Perl, Javascript, shell, etc.  Many assembler languages.
+
+EXPERIENCE
+
+    2011-present Principal Software Engineer, Shutterfly LLC, Phoenix, Arizona
+        Principally back-end services written in Java, along with some browser-based
+        Javascript.  Three years ago the entire stack was migrated to AWS, and we
+        are gradually migrating the monlithic appserver into micro-services.  The services
+        primarily support customer shopping.  They aggregate catalog information, images,
+        Bloomreach-based search, and pricing information to provide the client with a
+        single source of information about Shutterfly's extensive product offering.
+
+    2008-2011 Senior Software Engineer, A2Z Development (Amazon), Phoenix, Arizona
+        Principally back-end services written in C++ and Java.
+
+    2006-2007 Senior Software Engineer, Google, Phoenix, Arizona
+        Struts-based web application development in Java supporting Google's job candidate
+        workflow, from prospects to applicants to offer preparation and finally into
+        the HR system.
+
+    2004-2005 Senior Architect, Scientific Technologies Corporation, Tucson, Arizona.
+        Software to support several state Departments of Health.  Disease reporting
+        registries and reporting.
+        
+    2003 Senior Software Engineer, Nokia
+        Systems programming on Linux and Windows 2000 for the embedded Java system
+        that runs under the Symbian OS on Nokia cellular phones.  I augmented the Java
+        classloader and am currently working to provide on-device debugging support.
+
+    1998-2002 Lead Software Engineer, Newmonics LLC
+        Java compiler design and implementation for Intel, PPC, and ARM architectures.
+        Designed and implemented optimization and code generation algorithms for Just
+        In Time (JIT) and Ahead of Time (AOT) Java compilers.   Promoted (August 2001)
+        to head the team of four developers.  During our work on this project we more
+        than doubled the speed of generated code, and we added the PPC and Arm ports
+        to the existing x86 framework.
+
+
+    1995-2000 Owner, EZLink Internet Access.
+        In 1995 EZLink was Fort Collins' first provider of dial-up Internet Access
+        to the public.  I ordered all phone and data services and all equipment
+        and configured it.  Space does not permit a full list of duties involved,
+        but they include configuring Cisco routers, Linux, Livingston Portmasters,
+        Cyclades multiport cards, new servers, web servers, etc.  I found and fixed
+        some bugs in vendor-supplied authentication software (RADIUS) and in the Linux
+        Cyclades drivers.
+
+    1989-1994 Assistant Professor, Colorado State University.
+        Teaching: comparative programming languages, operating systems, compilers.
+        Research: fast retargetable code generation, use of artificial intelligence
+        (2D bin packing heuristics) in screen layout systems.
+
+    1984-1988 Research associate, University of Arizona.
+
+    1981-1995 PRN Inc., of Miami, Florida (part time 1984-1994).
+        This company supplied supplemental nursing services to hospitals and private
+        homes, on a basis similar to that of Kelly or Manpower.  Nine of our offices
+        ran applications and database systems developed by me.  The system contained
+        some 80000 lines of C code and included an ISAM-based database, interactive
+        schema definition facility, report generator, file maintenance utilities,
+        text formatting utility, and application code.  The applications include
+        healthcare billing, accounts receivable, payroll, general ledger, and bank
+        statement reconciliation.
+
+    1987-1988, Photometrics, Inc, of Tucson, Arizona (part time).
+        This company (now Roper Scientific) manufactures high-end imaging systems.
+        I worked on image processing algorithms such as high-speed multiplicative
+        scaling.
+
+    1984-1985 Xydac, Inc. of Tucson, Arizona (part time).
+        Development of a user-level language and compiler for an object- based
+        distributed factory automation control system.
+
+    1978-1981 Partner at International Micro Systems, of Miami, Florida.
+        Systems software development, including database and financial applications.
+        Sales and customer support. Hardware design and maintenance.
+
+    1978 ModComp, Fort Lauderdale, Florida.
+        Support of math and runtime libraries under two operating systems.  Software
+        tools and compiler development in XPL.
+
+    1976-1978 Systems programmer, Data General Corp. of Westboro,
+        Massachusetts, on a team that converted INFOS (an extended, multi-level ISAM) to
+        AOS, an operating system announced by DG in 1978.  The programming was entirely
+        in assembler except for some utilities, which are in an XPL-like language.
+        I worked on file space management, multi-thread command dispatch and locking
+        protocols, memory management, and some utilities.
+
+
+
+
+
+PUBLICATIONS
+
+    Analyzing and Compressing Assembly Code, Proceedings of the SIGPLAN '84 Symposium
+    on Compiler Construction, SIGPLAN Notices 19, 6 (June 1984) 117-121 (with C. Fraser
+    and E. Myers).
+
+    Integrating Code Generation and Optimization, Proceedings of the SIGPLAN '86
+    Symposium on Compiler Construction, SIGPLAN Notices 21, 7 (July 1986) 242-248
+    (with C. Fraser).
+
+    Automatic Generation of Fast Optimizing Code Generators, Proceedings of the SIGPLAN
+    '88 Conference on Programming Language Design and Implementation (with C. Fraser).
+
+    A Retargetable Optimizing Code Generator Generator.  Ph.D. dissertation, University
+    of Arizona, 1988.
+
+    Fast Code Generation Using Automatically-Generated Decision Trees, Proceedings
+    of the SIGPLAN '90 Conference on Programming Language Design and Implementation,
+    SIGPLAN Notices 25, 6 (June 1990), 9-15.
+
+
+DISSERTATION RESEARCH SUMMARY
+
+    The "chop" code generator uses automatically-generated hard-coded decision
+    trees to quickly rewrite a DAG of intermediate code into one of assembler code.
+    The decision trees are generated from a database of rewriting rules.  The rules
+    are discovered while generating code for a test suite of C code, using symbolic
+    descriptions of the semantics of the intermediate and assembler codes.  The final
+    hard-coded decision tree is approximately 20 times faster than the equivalent
+    component of the Portable C Compiler.
+
+PERSONAL
+
+    I hold a private pilot license, single-engine.
+
+PROFESSIONAL ACTIVITIES AND AWARDS
+
+    David L. Clark Memorial Scholarship Referee, Information Processing Letters,
+    Software Practice and Experience
+

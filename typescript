@@ -1,0 +1,124 @@
+Script started on 2026-04-01 20:30:10-07:00 [TERM="xterm-256color" TTY="/dev/pts/2" COLUMNS="125" LINES="31"]
+[?2004h]0;alan@alan-OptiPlex-7050: ~/gits/dragonreef.netalan@alan-OptiPlex-7050:~/gits/dragonreef.net$ ~/bin/fetch_stooq.sh VOO.US
+[?2004l*   Trying 78.47.75.66:443...
+* Connected to stooq.com (78.47.75.66) port 443 (#0)
+* ALPN, offering http/1.1
+*  CAfile: /etc/ssl/certs/ca-certificates.crt
+*  CApath: /etc/ssl/certs
+* TLSv1.0 (OUT), TLS header, Certificate Status (22):
+} [5 bytes data]
+* TLSv1.3 (OUT), TLS handshake, Client hello (1):
+} [512 bytes data]
+* TLSv1.2 (IN), TLS header, Certificate Status (22):
+{ [5 bytes data]
+* TLSv1.3 (IN), TLS handshake, Server hello (2):
+{ [85 bytes data]
+* TLSv1.2 (IN), TLS header, Certificate Status (22):
+{ [5 bytes data]
+* TLSv1.2 (IN), TLS handshake, Certificate (11):
+{ [6484 bytes data]
+* TLSv1.2 (IN), TLS header, Certificate Status (22):
+{ [5 bytes data]
+* TLSv1.2 (IN), TLS handshake, Server key exchange (12):
+{ [783 bytes data]
+* TLSv1.2 (IN), TLS header, Certificate Status (22):
+{ [5 bytes data]
+* TLSv1.2 (IN), TLS handshake, Server finished (14):
+{ [4 bytes data]
+* TLSv1.2 (OUT), TLS header, Certificate Status (22):
+} [5 bytes data]
+* TLSv1.2 (OUT), TLS handshake, Client key exchange (16):
+} [262 bytes data]
+* TLSv1.2 (OUT), TLS header, Finished (20):
+} [5 bytes data]
+* TLSv1.2 (OUT), TLS change cipher, Change cipher spec (1):
+} [1 bytes data]
+* TLSv1.2 (OUT), TLS header, Certificate Status (22):
+} [5 bytes data]
+* TLSv1.2 (OUT), TLS handshake, Finished (20):
+} [16 bytes data]
+* TLSv1.2 (IN), TLS header, Finished (20):
+{ [5 bytes data]
+* TLSv1.2 (IN), TLS header, Certificate Status (22):
+{ [5 bytes data]
+* TLSv1.2 (IN), TLS handshake, Finished (20):
+{ [16 bytes data]
+* SSL connection using TLSv1.2 / DHE-RSA-AES256-GCM-SHA384
+* ALPN, server did not agree to a protocol
+* Server certificate:
+*  subject: CN=*.stooq.com
+*  start date: Oct 30 00:00:00 2025 GMT
+*  expire date: Nov 30 23:59:59 2026 GMT
+*  subjectAltName: host "stooq.com" matched cert's "stooq.com"
+*  issuer: C=GB; O=Sectigo Limited; CN=Sectigo Public Server Authentication CA DV R36
+*  SSL certificate verify ok.
+* TLSv1.2 (OUT), TLS header, Supplemental data (23):
+} [5 bytes data]
+> GET /q/d/?s=voo.us HTTP/1.1
+> Host: stooq.com
+> User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36
+> Accept-Encoding: deflate, gzip, br, zstd
+> Cookie: cookie_user=%3F+++1dllg000G+1100d1300c3%7Cvoo.us; cookie_uu=260402000; PHPSESSID=ir28f732tm27dv0hskf313ike5; uid=usa9utky9858kjrdzjkp09ncz0
+> Accept-Language: en-US,en;q=0.9
+> Cache-Control: no-cache
+> Pragma: no-cache
+> sec-ch-ua: "Google Chrome";v="143", "Chromium";v="143", "Not A(Brand";v="24"
+> sec-ch-ua-mobile: ?0
+> sec-ch-ua-platform: "Linux"
+> Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+> Referer: https://stooq.com/q/?s=voo.us
+> Sec-Fetch-Dest: document
+> Sec-Fetch-Mode: navigate
+> Sec-Fetch-Site: same-origin
+> Sec-Fetch-User: ?1
+> Upgrade-Insecure-Requests: 1
+> 
+* TLSv1.2 (IN), TLS header, Supplemental data (23):
+{ [5 bytes data]
+* Mark bundle as not supporting multiuse
+< HTTP/1.1 200 OK
+< Date: Thu, 02 Apr 2026 03:30:19 GMT
+< Server: Apache
+< Expires: Sat, 1 Jan 2000 12:00:00 GMT
+< Cache-Control: pre-check=0, post-check=0, max-age=0
+< Pragma: no-cache
+* Replaced cookie PHPSESSID="ir28f732tm27dv0hskf313ike5" for domain stooq.com, path /, expire 0
+< Set-Cookie: PHPSESSID=ir28f732tm27dv0hskf313ike5; path=/
+< Content-Encoding: deflate
+< Last-Modified: Thu, 02 Apr 2026 05:30:19 GMT
+* Replaced cookie cookie_user="%3F+++1dllg000G+1500d1300c3%7Cvoo.us" for domain stooq.com, path /, expire 1783740619
+< Set-Cookie: cookie_user=%3F+++1dllg000G+1500d1300c3%7Cvoo.us; expires=Sat, 11-Jul-2026 03:30:19 GMT; path=/; domain=stooq.com
+< Transfer-Encoding: chunked
+< Content-Type: text/html
+< 
+* TLSv1.2 (IN), TLS header, Supplemental data (23):
+{ [5 bytes data]
+* TLSv1.2 (IN), TLS header, Supplemental data (23):
+{ [5 bytes data]
+* TLSv1.2 (IN), TLS header, Supplemental data (23):
+{ [5 bytes data]
+* TLSv1.2 (IN), TLS header, Supplemental data (23):
+{ [5 bytes data]
+* TLSv1.2 (IN), TLS header, Supplemental data (23):
+{ [5 bytes data]
+* TLSv1.2 (IN), TLS header, Supplemental data (23):
+{ [5 bytes data]
+* TLSv1.2 (IN), TLS header, Supplemental data (23):
+{ [5 bytes data]
+* TLSv1.2 (IN), TLS header, Supplemental data (23):
+{ [5 bytes data]
+* TLSv1.2 (IN), TLS header, Supplemental data (23):
+{ [5 bytes data]
+* TLSv1.2 (IN), TLS header, Supplemental data (23):
+{ [5 bytes data]
+* TLSv1.2 (IN), TLS header, Supplemental data (23):
+{ [5 bytes data]
+* TLSv1.2 (IN), TLS header, Supplemental data (23):
+{ [5 bytes data]
+* TLSv1.2 (IN), TLS header, Supplemental data (23):
+{ [5 bytes data]
+* Connection #0 to host stooq.com left intact
+[?2004h]0;alan@alan-OptiPlex-7050: ~/gits/dragonreef.netalan@alan-OptiPlex-7050:~/gits/dragonreef.net$ exit
+[?2004lexit
+
+Script done on 2026-04-01 20:30:22-07:00 [COMMAND_EXIT_CODE="0"]

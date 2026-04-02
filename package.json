@@ -1,0 +1,8 @@
+{
+  "name": "dragonreef-tools",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "playwright-core": "^1.54.2"
+  }
+}

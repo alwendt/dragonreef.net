@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Asymmetric Hole Gas Toy (Implicit Line Collisions)</title>
+  <style>
+    body {
+      margin: 0;
+      background: #222;
+      color: #eee;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    #info {
+      margin: 10px 8px 6px;
+      text-align: center;
+      line-height: 1.2;
+    }
+    canvas {
+      background: #111;
+      border: 1px solid #555;
+      margin-bottom: 10px;
+    }
+    .muted { color: #aaa; font-size: 0.9em; }
+    .row { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+  </style>
+</head>
+<body>
+  <div id="info">
+    <div><b>Asymmetric Hole Gas Toy</b> (event collisions, implicit line intersection)</div>
+    <div class="row">
+      <div>Left time: <span id="leftTime">0</span> s</div>
+      <div>Right time: <span id="rightTime">0</span> s</div>
+      <div>Collisions/sec: <span id="colCount">0</span></div>
+    </div>
+    <div class="muted">Box: 11" × 8" · Wall thickness: 1" · Hole: trapezoid (2" tall on left face → 1" tall on right)</div>
+    <div class="muted">Physics uses a point particle; radius is only for drawing.</div>
+  </div>
+
+  <canvas id="sim"></canvas>
+
+  <script>
+
+    // =====================
+    // Geometry (inches)
+    // =====================
+    const BOX_W = 11;
+    const BOX_H = 8;
+
+    const WALL_CENTER = BOX_W / 2;        // 5.5"
+    const WALL_THICK = 1.0;               // 1"
+    const WALL_LEFT = WALL_CENTER - WALL_THICK / 2;  // 5"
+    const WALL_RIGHT = WALL_CENTER + WALL_THICK / 2; // 6"
+
+    const HOLE_Y_CENTER = BOX_H / 2;      // centered vertically
+    const HOLE_HALF_LEFT = 1.0;           // 2" tall at left face
+    const HOLE_HALF_RIGHT = 0.5;          // 1" tall at right face
+
+    const BALL_RADIUS_IN = 0.125;         // 1/4" diameter (draw only)
+    let currentTime = 0;
+
+    // =====================
+    // Canvas setup
+    // =====================
+    const canvas = document.getElementById('sim');
+    const ctx = canvas.getContext('2d');
+    const leftSpan = document.getElementById('leftTime');
+    const rightSpan = document.getElementById('rightTime');
+    const colSpan = document.getElementById('colCount');
+
+    let pxPerInch = 60;
+
+    function resizeCanvas() {
+      const maxW = window.innerWidth * 0.95;
+      const maxH = (window.innerHeight - 110) * 0.92;
+      const aspect = BOX_W / BOX_H;
+
+      let cw, ch;
+      if (maxW / maxH > aspect) {
+        ch = maxH;
+        cw = ch * aspect;
+      } else {
+        cw = maxW;
+        ch = cw / aspect;
+      }
+
+      canvas.width = Math.max(320, Math.floor(cw));
+      canvas.height = Math.max(240, Math.floor(ch));
+      pxPerInch = canvas.width / BOX_W;
+    }
+
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    function ix(xIn) { return xIn * pxPerInch; }
+    function iy(yIn) { return yIn * pxPerInch; }
+
+    // =====================
+    // Ball state (inches, inches/sec)
+    // =====================
+    const balls = [];
+    for (i = 0; i < 25; i++) {
+        balls.push( {x:BOX_W * Math.random(), y:BOX_H * Math.random(), vx:Math.random()/2, vy:Math.random()/2 } );
+    }
+
+    // =====================
+    // Counters
+    // =====================
+    let leftTime = 0;
+    let rightTime = 0;
+
+    // =====================
+    // Implicit line intersection helpers
+    // =====================
+    const EPS = 1e-9;
+
+    function makeSegment(x1, y1, x2, y2) {
+      // Line through segment in implicit form: a*x + b*y = c
+      // For endpoints P1(x1,y1), P2(x2,y2):
+      //   a = (y2 - y1)
+      //   b = (x1 - x2)
+      //   c = a*x1 + b*y1
+      const a = (y2 - y1);
+      const b = (x1 - x2);
+      const c = a * x1 + b * y1;
+
+      // Unit normal from (a,b)
+      const len = Math.hypot(a, b) || 1;
+      const nx = a / len;
+      const ny = b / len;
+
+      return { x1, y1, x2, y2, a, b, c, nx, ny };
+    }
+
+    function pointOnSegmentBBox(xp, yp, seg) {
+      const minX = Math.min(seg.x1, seg.x2) - 1e-9;
+      const maxX = Math.max(seg.x1, seg.x2) + 1e-9;
+      const minY = Math.min(seg.y1, seg.y2) - 1e-9;
+      const maxY = Math.max(seg.y1, seg.y2) + 1e-9;
+      return xp >= minX && xp <= maxX && yp >= minY && yp <= maxY;
+    }
+
+    function trajectoryLine(x0, y0, vx, vy) {
+      // Normal to direction (vx,vy) is (vy, -vx)
+      const a0 = vy;
+      const b0 = -vx;
+      const c0 = a0 * x0 + b0 * y0;
+      return { a0, b0, c0 };
+    }
+
+    // Find the point intersection of the lines
+    // a0*x + b0*y = c0 and a1*x + b1*y = c1
+    function intersectLines(a0, b0, c0, a1, b1, c1) {
+      // Using the exact algebra derived in chat:
+      // den = a1*b0 - b1*a0
+      // x' = (c1*b0 - b1*c0)/den
+      // y' = (a1*c0 - a0*c1)/den
+      const den = (a1 * b0 - b1 * a0);
+      if (Math.abs(den) < EPS) return null;
+
+      const xp = (c1 * b0 - b1 * c0) / den;
+      const yp = (a1 * c0 - a0 * c1) / den;
+      return { xp, yp };
+    }
+
+    function timeFromPoint(x0, y0, vx, vy, xp, yp) {
+      // Compute t from whichever component is usable.
+      // We deliberately allow very small |t| (including 0) so corner/edge hits at the exact boundary
+      // still register as collisions, rather than letting the particle “stick” via clamping.
+      let t;
+      if (Math.abs(vx) > EPS) {
+        t = (xp - x0) / vx;
+      } else if (Math.abs(vy) > EPS) {
+        t = (yp - y0) / vy;
+      } else {
+        return null;
+      }
+
+      // Reject intersections that are meaningfully behind us.
+      if (t < -1e-12) return null;
+
+      // Snap tiny negative/positive times to 0 to handle exact boundary contacts.
+      if (Math.abs(t) < 1e-10) t = 0;
+
+      // Consistency check (filters numerical/logic issues)
+      const xChk = x0 + vx * t;
+      const yChk = y0 + vy * t;
+      if (Math.abs(xChk - xp) > 1e-6 || Math.abs(yChk - yp) > 1e-6) return null;
+
+      return t;
+    }
+
+    function timeToSegmentCollision(x0, y0, vx, vy, seg) {
+
+      if (!inbound(seg, vx, vy)) return null;
+
+      const { a0, b0, c0 } = trajectoryLine(x0, y0, vx, vy);
+      const hit = intersectLines(a0, b0, c0, seg.a, seg.b, seg.c);
+      if (!hit) return null;
+
+      const { xp, yp } = hit;
+      if (!pointOnSegmentBBox(xp, yp, seg)) return null;
+
+      const t = timeFromPoint(x0, y0, vx, vy, xp, yp);
+      if (t === null) return null;
+
+      return { t, nx: seg.nx, ny: seg.ny, xp, yp };
+    }
+
+    function reflectVelocity(vx, vy, nx, ny) {
+      const dot = vx * nx + vy * ny;
+      return {
+        vx: vx - 2 * dot * nx,
+        vy: vy - 2 * dot * ny
+      };
+    }
+
+    // =====================
+    // Build all solid boundary segments (one list)
+    // =====================
+
+    function buildSegments() {
+      const segs = [];
+
+      // Outer box (clockwise in canvas coords)
+      segs.push(makeSegment(0, 0, BOX_W, 0));           // top:    left -> right
+      segs.push(makeSegment(BOX_W, 0, BOX_W, BOX_H));   // right:  top  -> bottom
+      segs.push(makeSegment(BOX_W, BOX_H, 0, BOX_H));   // bottom: right -> left
+      segs.push(makeSegment(0, BOX_H, 0, 0));           // left:   bottom -> top
+
+      // Trapezoid vertices (for slants + drawing)
+      const topLeft  = { x: WALL_LEFT,  y: HOLE_Y_CENTER - HOLE_HALF_LEFT };
+      const botLeft  = { x: WALL_LEFT,  y: HOLE_Y_CENTER + HOLE_HALF_LEFT };
+      const topRight = { x: WALL_RIGHT, y: HOLE_Y_CENTER - HOLE_HALF_RIGHT };
+      const botRight = { x: WALL_RIGHT, y: HOLE_Y_CENTER + HOLE_HALF_RIGHT };
+
+      // --- Solid wall boundary, expressed as two CCW loops (top chunk and bottom chunk) ---
+
+      // TOP CHUNK (concrete on left for every edge)
+      segs.push(makeSegment(WALL_RIGHT, 0,        WALL_LEFT, 0));        // top edge: right -> left
+      segs.push(makeSegment(WALL_LEFT, 0,         WALL_LEFT, topLeft.y)); // left face above hole: down
+      segs.push(makeSegment(WALL_LEFT, topLeft.y, WALL_RIGHT, topRight.y)); // top inner slant: left -> right
+      segs.push(makeSegment(WALL_RIGHT, topRight.y, WALL_RIGHT, 0));     // right face above hole: up
+
+      // BOTTOM CHUNK (concrete on left for every edge)
+      segs.push(makeSegment(WALL_LEFT, BOX_H,       WALL_RIGHT, BOX_H));     // bottom edge: left -> right
+      segs.push(makeSegment(WALL_RIGHT, BOX_H,      WALL_RIGHT, botRight.y)); // right face below hole: up
+      segs.push(makeSegment(WALL_RIGHT, botRight.y, WALL_LEFT,  botLeft.y));  // bottom inner slant: right -> left
+      segs.push(makeSegment(WALL_LEFT,  botLeft.y,  WALL_LEFT,  BOX_H));      // left face below hole: down
+
+      return { segs, topLeft, botLeft, topRight, botRight };
+    }
+
+    const geom = buildSegments();
+    const segments = geom.segs;
+
+    // Is this velocity heading inward toward the wall?
+    // If one is walking the segment from beginning to end, the concrete is always on the left.
+    function inbound(seg, vx, vy) {
+      // seg is directed A(x1,y1) -> B(x2,y2)
+      const dx = seg.x2 - seg.x1;
+      const dy = seg.y2 - seg.y1;
+
+      // Signed cross product of (A->B) with velocity
+      const cross = dx * vy - dy * vx;
+
+      // In y-down coordinates:
+      // cross < 0  => left turn  => heading into the wall
+      // cross >= 0 => right/tangent => not heading inward
+      return cross < 0;
+    }
+
+    // =====================
+    // Collision search and 1-second event advance
+    // =====================
+    function ballBallCollisionTime(b1, b2) {
+      // Returns earliest t >= 0 when centers are 2R apart, or null.
+      // Uses relative motion quadratic: |r + u t|^2 = (2R)^2
+      const rx = b2.x - b1.x;
+      const ry = b2.y - b1.y;
+      const ux = b2.vx - b1.vx;
+      const uy = b2.vy - b1.vy;
+
+      const R = BALL_RADIUS_IN;
+      const radiusSum = 2 * R;
+
+      const A = ux * ux + uy * uy;
+      const B = 2 * (rx * ux + ry * uy);
+      const C = (rx * rx + ry * ry) - radiusSum * radiusSum;
+
+      if (A === 0) return null; // no relative motion
+
+      const disc = B * B - 4 * A * C;
+      if (disc < 0) return null;
+
+      const s = Math.sqrt(disc);
+      const t1 = (-B - s) / (2 * A);
+      const t2 = (-B + s) / (2 * A);
+
+      // We want the earliest non-negative collision time.
+      let t = null;
+      if (t1 >= 0) t = t1;
+      else if (t2 >= 0) t = t2;
+
+      return t;
+    }
+
+    function resolveBallBallCollision(b1, b2) {
+      // Perfectly elastic collision, equal masses, disks.
+      // Update velocities along the collision normal at impact.
+      const dx = b2.x - b1.x;
+      const dy = b2.y - b1.y;
+      const dist = Math.hypot(dx, dy) || 1;
+
+      const nx = dx / dist;
+      const ny = dy / dist;
+
+      // Relative velocity along normal
+      const dvx = b1.vx - b2.vx;
+      const dvy = b1.vy - b2.vy;
+      const vn = dvx * nx + dvy * ny;
+
+      // If separating, do nothing
+      if (vn <= 0) return;
+
+      // Equal mass elastic: swap normal components => impulse of magnitude vn
+      b1.vx -= vn * nx;
+      b1.vy -= vn * ny;
+      b2.vx += vn * nx;
+      b2.vy += vn * ny;
+    }
+
+    function findNextCollision(maxTime) {
+      // Find earliest event among:
+      //  - ball vs segments (respecting inbound())
+      //  - ball vs ball
+      let bestT = null;
+
+      // First pass: find minimum t
+      for (let bi = 0; bi < balls.length; bi++) {
+        const b = balls[bi];
+
+        for (const seg of segments) {
+          if (!inbound(seg, b.vx, b.vy)) continue;
+
+          const hit = timeToSegmentCollision(b.x, b.y, b.vx, b.vy, seg);
+          if (!hit) continue;
+          //if (hit.t > maxTime + 1e-12) continue;
+          if (hit.t > maxTime) continue;
+
+          if (bestT === null || hit.t < bestT) bestT = hit.t;
+        }
+      }
+
+      // Ball-ball candidates
+      for (let i = 0; i < balls.length; i++) {
+        for (let j = i + 1; j < balls.length; j++) {
+          const t = ballBallCollisionTime(balls[i], balls[j]);
+          if (t === null) continue;
+          //if (t > maxTime + 1e-12) continue;
+          if (t > maxTime) continue;
+          if (bestT === null || t < bestT) bestT = t;
+        }
+      }
+
+      if (bestT === null) return null;
+
+      // Second pass: collect all events at ~same time.
+      const TOL = 1e-9;
+      const wallHits = []; // {bi, nx, ny}
+      const pairHits = []; // {i, j}
+
+      for (let bi = 0; bi < balls.length; bi++) {
+        const b = balls[bi];
+
+        for (const seg of segments) {
+          if (!inbound(seg, b.vx, b.vy)) continue;
+
+          const hit = timeToSegmentCollision(b.x, b.y, b.vx, b.vy, seg);
+          if (!hit) continue;
+          //if (hit.t > maxTime + 1e-12) continue;
+          if (hit.t > maxTime) continue;
+
+          if (hit.t === bestT) {
+          //if (Math.abs(hit.t - bestT) <= TOL) {
+            wallHits.push({ bi, nx: hit.nx, ny: hit.ny });
+          }
+        }
+      }
+
+      for (let i = 0; i < balls.length; i++) {
+        for (let j = i + 1; j < balls.length; j++) {
+          const t = ballBallCollisionTime(balls[i], balls[j]);
+          if (t === null) continue;
+          if (t > maxTime) continue;
+          //if (t > maxTime + 1e-12) continue;
+          //if (Math.abs(t - bestT) <= TOL) {
+          if (t === bestT) {
+            pairHits.push({ i, j });
+          }
+        }
+      }
+
+      return { t: bestT, wallHits, pairHits };
+    }
+
+    function simulateUntil(nextTick) {
+      let iters = 0;
+      let collisionsThisSecond = 0;
+
+      while (currentTime < nextTick && iters++ < 200) {
+
+        const col = findNextCollision(nextTick - currentTime);
+
+        if (!col) {
+          break;
+        }
+
+        // advance exactly to collision time (all balls)
+        if (col.t > 0) {
+          for (const b of balls) {
+            b.x += b.vx * col.t;
+            b.y += b.vy * col.t;
+          }
+          currentTime += col.t;
+        }
+
+        // Apply wall collisions
+        for (const h of col.wallHits) {
+          const b = balls[h.bi];
+          let nx = h.nx, ny = h.ny;
+          const dot = b.vx * nx + b.vy * ny;
+          if (dot > 0) { nx = -nx; ny = -ny; }
+          const v2 = reflectVelocity(b.vx, b.vy, nx, ny);
+          b.vx = v2.vx;
+          b.vy = v2.vy;
+        }
+
+        // Apply ball-ball collisions
+        for (const p of col.pairHits) {
+          resolveBallBallCollision(balls[p.i], balls[p.j]);
+        }
+
+        collisionsThisSecond += Math.max(1, col.wallHits.length + col.pairHits.length);
+      }
+
+      // Finish remaining time straight if any
+      if (currentTime < nextTick) {
+        for (const b of balls) {
+          b.x += b.vx * (nextTick - currentTime);
+          b.y += b.vy * (nextTick - currentTime);
+        }
+      }
+
+      // Keep numerically bounded
+      for (const b of balls) {
+        b.x = Math.max(0, Math.min(BOX_W, b.x));
+        b.y = Math.max(0, Math.min(BOX_H, b.y));
+      }
+
+      colSpan.textContent = String(collisionsThisSecond);
+      currentTime = nextTick;
+    }
+
+    // =====================
+    // Drawing
+    // =====================
+    function drawScene() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Outer box
+      ctx.save();
+      ctx.strokeStyle = '#ccc';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(ix(0), iy(0), ix(BOX_W), iy(BOX_H));
+
+      // Wall block
+      ctx.fillStyle = '#444';
+      ctx.fillRect(ix(WALL_LEFT), iy(0), ix(WALL_THICK), iy(BOX_H));
+
+      // Carve hole visually
+      const tl = geom.topLeft, bl = geom.botLeft, tr = geom.topRight, br = geom.botRight;
+      ctx.globalCompositeOperation = 'destination-out';
+      ctx.beginPath();
+      ctx.moveTo(ix(tl.x), iy(tl.y));
+      ctx.lineTo(ix(bl.x), iy(bl.y));
+      ctx.lineTo(ix(br.x), iy(br.y));
+      ctx.lineTo(ix(tr.x), iy(tr.y));
+      ctx.closePath();
+      ctx.fill();
+
+      // Outline hole
+      ctx.globalCompositeOperation = 'source-over';
+
+      //ctx.strokeStyle = '#0f0';
+      //ctx.lineWidth = 1.5;
+      //ctx.beginPath();
+      //ctx.moveTo(ix(tl.x), iy(tl.y));
+      //ctx.lineTo(ix(bl.x), iy(bl.y));
+      //ctx.lineTo(ix(br.x), iy(br.y));
+      //ctx.lineTo(ix(tr.x), iy(tr.y));
+      //ctx.closePath();
+      //ctx.stroke();
+
+      // Ball
+      ctx.fillStyle = '#f55';
+      for (const ball of balls) {
+	  ctx.beginPath();
+	  ctx.arc(ix(ball.x), iy(ball.y), BALL_RADIUS_IN * pxPerInch, 0, Math.PI * 2);
+	  ctx.fill();
+      }
+
+      ctx.restore();
+    }
+
+    // =====================
+    // Tick: count time + simulate one second + draw
+    // =====================
+    function tick() {
+      for (const b of balls) {
+        if (b.x < WALL_CENTER) leftTime++; else rightTime++;
+      }
+      leftSpan.textContent = String(leftTime);
+      rightSpan.textContent = String(rightTime);
+
+      simulateUntil(currentTime + 1);
+      drawScene();
+    }
+
+    drawScene();
+    setInterval(tick, 100);
+
+    // Optional: click to randomize velocity a bit
+    canvas.addEventListener('click', () => {
+      // small random perturbation
+      for (const b of balls) {
+        b.vx += (Math.random() - 0.5) * 4;
+        b.vy += (Math.random() - 0.5) * 4;
+      }
+    });
+  
+</script>
+</body>
+</html>
+

@@ -1,0 +1,13 @@
+AuthName "FileManager Restricted Area"
+AuthType Basic
+AuthUserFile /usr/local/apache/.htpasswd
+Require valid-user
+ErrorDocument 500 /fm/error.html
+Options +ExecCGI
+
+### Added by provider for support reasons. Do not remove.
+satisfy any
+ORDER allow,deny
+allow from 69.36.160.253
+### End of do not remove ###
+# %%USER%%

@@ -1,0 +1,93 @@
+.\"
+.\"	@(#)grok.1	6.5 (CSU) 10/11/91
+.\"
+
+.TH GROK 1 "November 11, 1991
+.SH NAME
+grok \- Match and repair errors in regular expressions
+.SH SYNOPSIS
+.in +\w'\fBgrok \fR'u
+.ti -\w'\fBgrok \fR'u
+\fBgrok \fR \fIdefinition-file\fR
+
+.SH DESCRIPTION
+.I Grok
+matches instances of \fIlex\fR-style regular expressions from the input
+and prints them.
+In addition, it tries to repair input lines to make them instances of the
+regular expression, using single-character insertions, deletions, and 
+substitutions.
+Different single-character edits can be assigned different costs,
+and \fIgrok\fR will find a repair of lowest total cost.
+
+The algorithm used to find lowest-cost repairs takes time proportional
+to the product of the length of the input and the cost of the repair.
+A maximum repair cost tolerance must be supplied.
+\fIgrok\fR ignores input lines that cannot be repaired within the tolerance.
+The match is \fIanchored\fR, unlike the matching performed by \fIgrep\fR.
+
+The \fIdefinition-file\fR contains entries to define character
+repair costs, followed by a pair of percent signs alone on a line,
+followed by a single regular expression.   For example, the following 
+defines repair for lines scanned from a bank statement:
+
+.ne 4
+.nf
+.ft L
+% correct anything to anything else for 3
+%correct        .        .        3
+ 
+% a number of common numeric misreads.  4 is often read as (+
+% but we cannot correct string to string.
+%correct        "Z"        "2"        1
+%correct        "z"        "2"        1
+%correct        "S"        "5"        1
+%correct        "s"        "5"        1
+%correct        "l"        "1"        1
+%correct        "i"        "1"        1
+%correct        "I"        "1"        1
+%correct        "o"        "0"        1
+%correct        "O"        "0"        1
+%correct        "r"        "5"        1
+%correct        "?"        "9"        1
+%correct        "+"        "4"        1
+
+% default insertion cost is 2
+%insert         .          2
+
+% charge extra for numbers to avoid hallucinating numbers.
+%insert         [0-9]      3
+
+% delete anything for 2.  correction cost <= insert + delete.
+%delete         .          2
+%delete         [0-9]      3
+
+% the maximum tolerable error cost 
+%tolerance      20
+%%
+([ ]{20,30}[+ ]([ ]{5,7}[0-9]{5}|"NO ITEM # ")[ ]{3,4}[0-9]{9}
+[ ]{5,7}[0-1][0-9]-[0-3][0-9][ ]{6,13}(""|[1-9][0-9]{0,2}|[1-9]
+[0-9]{0,2}","[0-9]{3})\.[0-9]{2}([ ]{5,10}[+ ]([ ]{5,7}[0-9]{5}|
+"NO ITEM # ")[ ]{3,4}[0-9]{9}[ ]{5,7}[0-1][0-9]-[0-3][0-9][ ]{6,13}
+(""|[1-9][0-9]{0,2}|[1-9][0-9]{0,2}","[0-9]{3})\.[0-9]{2})?)|
+("       ENCLOSED           NUMBER        NUMBER".*)
+
+.ft R
+.fi
+
+\fB%correct\fR, \fB%insert\fR, and \fB%delete\fR lines supply repair costs
+to replace each character with each other, as well as for insertions
+and deletions.  Single-character regular expressions are accepted,
+and later costs overwrite earlier ones.
+
+The regular expression has been broken into several lines for display.
+It defines the expected
+structure of important lines on one style of bank statement.
+
+\fBGrok\fR outputs the repaired lines.
+
+.SH BUGS
+No provision is made for breaking long defining expressions across lines.
+
+.SH AUTHOR
+Alan Wendt.  Contributors include Eugene Myers (repair algorithm), Vern Paxson (\fBflex\fR code).

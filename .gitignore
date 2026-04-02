@@ -1,0 +1,12 @@
+node_modules/
+__pycache__/
+*.pyc
+*.pyo
+*.o
+*.so
+*.a
+*.out
+dist/
+build/
+coverage/
+.DS_Store

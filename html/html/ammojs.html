@@ -1,0 +1,122 @@
+<HTML>
+
+
+<head>
+
+
+<TITLE>Loan Amortization</TITLE>
+
+<meta name="keywords" Contents="grok regular expression lake june lakejune alan wendt dragonreef
+                            mortgage loan amortization interest rate payments refinance
+                                   mortgage calculator amortize moose
+                                   convert windows Linux Apollo Ulysses">
+
+<script language="javaScript">
+function blueboy(control) {
+   alert("this is a box, ya!");
+   alert("doc = " + document);
+   alert("control = " + control);
+   alert("control.parentNode = " + control.parentNode);
+   alert("document.parameters = " + document.mybody.parameters);
+   document.bgColor="#00EEEE";
+}
+
+function bleroo(control) {
+   alert('hi mom');
+   alert("doc = " + document);
+   alert("control = " + control);
+   alert("control.parentNode = " + control.parentNode);
+   alert("rate = " + document.getElementById("interestrate"));
+   var rate = document.getElementById("interestrate").value;
+   alert("rate = " + rate.value); 
+   var term = document.getElementById("term").value;
+   var principal = document.getElementById("amountfinanced").value;
+   var payment = document.getElementById("paymentamount").value;
+   var unknowns = 0;
+   if (rate == "")
+     unknowns++;
+   if (term == "")
+     unknowns++;
+   if (principal == "")
+     unknowns++;
+   if (payment == "")
+     unknowns++;
+   if (unknowns > 1) {
+      alert("Too many unknowns.  Please supply at least three of these numbers.");
+	  return;
+   }
+   document.bgColor="#EEEEEE";
+}
+</script>
+</head>
+
+<body id="mybody" bgcolor="#EEFFFA" TEXT = "#000000" LINK = "#0000FF" ALINK = "#FF00FF" VLINK = "#FF0000">
+
+<CENTER><B><H1>Dragonreef Loan Amortization Calculator</H1></B><P></CENTER><P>
+
+<P><HR><P>
+<UL>
+
+<B><H2>This calculator can print out mortgage loan amortizations.  It uses four numbers:
+the amount borrowed, interest rate, monthly payment, and the number of months it will
+take to pay off the loan.  If
+you enter any three of the four numbers, the calculator will figure out the fourth one.
+For example, if someone's quoted you a loan for 100,000 with 360 monthly payments
+of 750, this calculator will figure out the effective interest rate of 8.231978%.
+</H2></b><br/>
+
+If you are considering refinancing your home, here's a thought.
+There's no point in reducing your payment, if it will reset your term to 30 years.
+And every refinance costs money, usually at least $2000, and more if you "buy points".
+You want to get this paid off eventually.  To do an apples-to-apples (isofrutopic)
+comparison, you need to find out what the payments would be on the new loan if
+it had the same term as the remaining term of your current loan.  To do that,
+enter the new interest rate, the new principal amount (your current amount plus
+refinance charges), and the number of months remaining on
+your current mortgage.  The calculator will tell you how much you'll have to
+be paying to get paid off in the same term as your current mortgage.
+<br> 
+You'll also want to run amortizations for both your current loan and the proposed
+new loan, to see how long it's going to be before the refinance charges are recouped.
+If you sell the house before then, you'll lose money.
+
+
+<BR><P>
+<FORM action="http://127.0.0.1/cgi-bin/ammo" id="parameters" method="post">
+<BR>
+<table width=80%>
+
+<tr>
+  <td>Interest Rate</td><td><INPUT type="text" name="Interest" id="interestrate" size=5></td>
+  <td>Number of Months</td><td><INPUT type="text" name="Months" id="term" size=5></td>
+</tr>
+<tr>
+  <td>Amount Financed</td><td><INPUT type="text" name="Principal" id="amountfinanced" size=8></td>
+  <td>Payment Amount</td><td><INPUT type="text" name="Payment" id="paymentamount" size=8></td>
+</tr>
+</table>
+
+<INPUT type="button" value="Amortize" onclick="bleroo(this);" ><BR>
+
+<INPUT type="button" value="a box" onclick="blueboy(this);" ><BR>
+
+<FORM>
+
+
+<P>
+
+</UL>
+
+<HR><P>
+<script type="text/javascript"><!--
+google_ad_client = "pub-6553508596200978";
+/* 728x90, created 4/25/09 */
+google_ad_slot = "5967232707";
+google_ad_width = 728;
+google_ad_height = 90;
+//-->
+</script>
+<script type="text/javascript"
+src="http://pagead2.googlesyndication.com/pagead/show_ads.js">
+</script>
+</body>

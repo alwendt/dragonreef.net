@@ -1,0 +1,26 @@
+
+Begin3
+Title: grok -- Get Regular expression and make OK.
+Version: 1.01
+Entered-date: August 1, 1997
+Description: User supplies a regular expressiona,
+a table of character-to-character correction costs,
+and a maximum acceptable cost.
+Grok reads its standard input and attempts to correct
+each input line to an instance of the regular expression,
+using corrections of minimal total cost.
+Keywords: Regular Expression Approximate Match Repair
+Author: alan@ezlink.com (Alan Wendt)
+       Vern Paxson
+       Eugene Meyers
+       Robert Heinlein
+Maintained-by: alan@ezlink.com (Alan Wendt)
+Primary-site: ftp.sunsite.edu /pub/Linux/utils/text/grok-1.01.tar.gz
+Alternate-site:
+Original-site: ftp.ezlink.com /pub/software/linux/grok-1.01.tar.gz
+Platforms:  Xenix
+	    Linux
+            DEC 3100 Ultrix 
+Copying-policy: Users must cut down largest tree in forest with a herring.
+End
+

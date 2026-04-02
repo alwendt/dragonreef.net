@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Chart Lookup</title>
+  <style>
+    body {
+      font-family: Arial, Helvetica, sans-serif;
+      margin: 40px;
+      color: #1f2a36;
+    }
+
+    form {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    input {
+      padding: 8px 12px;
+      font-size: 16px;
+    }
+
+    button {
+      padding: 8px 14px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <h1>Chart Lookup</h1>
+  <p>Enter a ticker to open its chart.</p>
+  <form id="ticker-form">
+    <label for="ticker-input">Ticker:</label>
+    <input id="ticker-input" name="ticker" type="text" inputmode="latin" autocomplete="off" spellcheck="false" required>
+    <button type="submit">Go</button>
+  </form>
+
+  <script>
+    const form = document.getElementById("ticker-form");
+    const input = document.getElementById("ticker-input");
+
+    function normalizeTicker(raw) {
+      if (!raw) {
+        return "VOO";
+      }
+      const upper = raw.toUpperCase().trim();
+      const cleaned = upper.replace(/[^A-Z0-9.\-]/g, "");
+      return cleaned || "VOO";
+    }
+
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const ticker = normalizeTicker(input.value);
+      window.location.assign(`/chart/${encodeURIComponent(ticker)}`);
+    });
+  </script>
+</body>
+</html>

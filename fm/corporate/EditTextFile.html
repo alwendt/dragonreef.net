@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<%@ ts prefix="ts" %>
+<html>
+<head>
+<title>Editing <ts:var var="currentFile" /></title>
+<link href="../corporate/FileManager.css" rel="stylesheet" type="text/css" />
+<script type='text/javascript' src='../corporate/Tabby.js'></script>
+</head>
+  <body>
+    <table width="750" border="0" cellpadding="0" cellspacing="0" align="center">
+      <tr>
+        <td align="center">
+          <table width="428" border="0" cellpadding="0" cellspacing="0">
+            <tr>
+              <td colspan="3" class="menuTopBorder"><img src="../corporate/images/spacer.gif" width="1" height="1" alt="" class="spacer" /></td>
+            </tr>
+            <tr>
+              <td class="menuTopBorder"><img src="../corporate/images/spacer.gif" width="1" height="1" alt="" class="spacer" /></td>
+              <td class="menuTopBarWithText">Edit File</td>
+              <td class="menuTopBorder"><img src="../corporate/images/spacer.gif" width="1" height="1" alt="" class="spacer" /></td>
+            </tr>
+            <tr>
+              <td colspan="3" class="menuTopBorder"><img src="../corporate/images/spacer.gif" width="1" height="1" alt="" class="spacer" /></td>
+            </tr>
+            <tr>
+              <td class="menuTopBorder"><img src="../corporate/images/spacer.gif" width="1" height="1" alt="" class="spacer" /></td>
+              <td class="menuButtonBG">
+                <table width="100%" border="0" cellspacing="0" cellpadding="5">
+                  <tr>
+                    <td align="center">
+                      <p class="titleText">You may edit <ts:var var="currentFile" /> below.</p>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+              <td class="menuTopBorder"><img src="../corporate/images/spacer.gif" width="1" height="1" alt="" class="spacer" /></td>
+            </tr>
+            <tr>
+              <td colspan="3" class="menuTopBorder"><img src="../corporate/images/spacer.gif" width="1" height="1" alt="" class="spacer" /></td>
+            </tr>
+            <tr>
+              <td class="menuTopBorder"><img src="../corporate/images/spacer.gif" width="1" height="1" alt="" class="spacer" /></td>
+              <td class="menuSearchBG">
+                <table width="100%" height="20" border="0" cellspacing="0" cellpadding="0">
+                  <tr>
+                    <td align="right">
+                      <div class="goBackLink"><a href="FileManager.cgi?action=dir_listing&path=<ts:var var='currentPath' />"><img src="../corporate/images/back.gif" width="20" height="20" border="0" alt=""/></a></div>&nbsp;
+                    </td>
+                    <td align="right" width="65">
+                      <div class="goBackLinkText"><a href="FileManager.cgi?action=dir_listing&path=<ts:var var='currentPath' />">Go Back</a>&nbsp;&nbsp;</div>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+              <td class="menuTopBorder"><img src="../corporate/images/spacer.gif" width="1" height="1" alt="" class="spacer" /></td>
+            </tr>
+            <tr>
+              <td colspan="3" class="menuTopBorder"><img src="../corporate/images/spacer.gif" width="1" height="1" alt="" class="spacer" /></td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+    <table width="100%" border="0" cellpadding="0" cellspacing="0" align="center">
+      <tr>
+        <td colspan="2">
+          <form id="frmEditFile" method="post" action="FileManager.cgi">
+            <textarea onkeydown="HandleTabs(event, this);" id="newFileContents" name="newFileContents" cols="96" rows="32" wrap="OFF" style="width: 98%;"><ts:var var="fileContents" /></textarea><br />
+            <input name="path" type="hidden" value="<ts:var var='currentPath' />" />
+            <input name="currentFile" type="hidden" value="<ts:var var='currentFile' />" />
+            <input name="action" type="hidden" value="finalizeEditFile" />
+            <input type="submit" value="Save Changes" class="BaseButton"/>
+          </form>
+        </td>
+      </tr>
+      <tr>
+        <td align="right">
+          <div class="goBackLink"><a href="FileManager.cgi?action=dir_listing&path=<ts:var var='currentPath' />"><img src="../corporate/images/back.gif" width="20" height="20" border="0" alt=""/></a></div>&nbsp;
+        </td>
+        <td align="right" width="65">
+          <div class="goBackLinkText"><a href="FileManager.cgi?action=dir_listing&path=<ts:var var='currentPath' />">Go Back</a>&nbsp;&nbsp;</div>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>
+

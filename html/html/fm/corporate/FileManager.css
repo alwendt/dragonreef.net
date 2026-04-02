@@ -1,0 +1,336 @@
+body {
+	background: #FFFFFF;
+	color: #000000;
+	font: 10px Verdana, Geneva, Arial, Helvetica, sans-serif;
+}
+
+INPUT.BaseButton {
+	font-family		: Verdana;
+	color			: Navy;
+	font-size 		: 10px;
+	height			: 21px;
+	background-color 	: #ffffff;
+	background-image	: url('../corporate/images/btnBackground.gif');
+	border-width 		: 1px solid;
+	border-top-color 	: #d7d7d7;
+	border-left-color 	: #d7d7d7;
+	border-right-color 	: #004080;
+	border-bottom-color 	: #004080;
+}
+
+.searchTableBG {
+	background: #ebebeb;
+	color: #ebebeb;
+}
+
+.searchTableBorderLeft {
+	border-left: 1px solid #d7d7d7;
+	border-bottom: 1px solid #d7d7d7;
+	border-top: 1px solid #d7d7d7;
+}
+
+.searchTableBorderRight {
+	border: 1px solid #d7d7d7;
+}
+
+.searchTableText {
+	color: #000000;
+	background: transparent;
+	font: 10px Verdana, Geneva, Arial, Helvetica, sans-serif;
+}
+
+.legendTableBG {
+        background: #ffffff;
+        color: #000000;
+}
+
+.legendTopBar {
+        background: #dddddd;
+        color: #000000;
+}
+
+.menuTopBar {
+	background: #dddddd;
+	color: #000000;
+        border-bottom: 1px #dddddd solid;
+}
+
+.menuTopBarWithText {
+        font: bold 12px Verdana, Geneva, Arial, Helvetica, sans-serif;
+        text-align: center;
+        background: #dddddd;
+        color: #000000;
+        border-bottom: 1px #dddddd solid;
+        height: 20px;
+        width: 100%;
+}
+
+.menuTopBorder {
+	background: #000000;
+	color: #000000;
+}
+
+.menuButtonBG {
+	background: #ffffff;
+	color: #ffffff;
+}
+
+.menuSearchBG {
+	background: #dddddd;
+	color: #dddddd;
+}
+
+.masterTableBorder {
+	background: #000000;
+	color: #000000;
+}
+
+.currentDirectoryTitleCell {
+	background: #000000;
+	color: #000000;
+}
+
+.currentDirectoryInfoCell {
+	background: #3D3D3D;
+	color: #FFFFFF;
+}
+
+.currentDirectoryTitleText {
+	background: transparent;
+	color: #FFFFFF;
+	font: 14px Verdana, Geneva, Arial, Helvetica, sans-serif;
+}
+
+.currentDirectoryInfoText {
+	background: transparent;
+	color: #FFFFFF;
+	font: 14px Verdana, Geneva, Arial, Helvetica, sans-serif;
+}
+
+.currentDirectoryInfoText a:link {
+	background: transparent;
+	color: #FFFFFF;
+  text-decoration: none;
+}
+
+.currentDirectoryInfoText a:visited {
+	background: transparent;
+	color: #FFFFFF;
+  text-decoration: none;
+}
+
+.currentDirectoryInfoText a:hover {
+	background: transparent;
+	color: #FFFFFF;
+  text-decoration: underline;
+}
+
+.currentDirectoryInfoText a:active {
+	background: transparent;
+	color: #FFFFFF;
+  text-decoration: underline;
+}
+
+.ListHeadRow {
+	background: #d7d7d7;
+	color: #000000;
+	font: bold 10px Verdana, Geneva, Arial, Helvetica, sans-serif;
+}
+
+.dirRowMouseOut {
+	background: #ebebeb;
+	color: #000000;
+}
+
+.dirRowMouseOver {
+	background: #E1E1E1;
+	color: #000000;
+}
+
+.fileRowMouseOut {
+	background: #ffffff;
+	color: #000000;
+}
+
+.fileRowMouseOver {
+	background: #ebebeb;
+	color: #000000;
+}
+
+.uploadFilesCell {
+	background: #FFFFFF;
+	color: #FFFFFF;
+}
+
+.uploadFilesText {
+	background: transparent;
+	color: #394F8D;
+	font: bold 12px Verdana, Geneva, Arial, Helvetica, sans-serif;
+}
+
+.uploadFilesText a:link {
+	background: transparent;
+	color: #394F8D;
+	text-decoration: none;
+}
+
+.uploadFilesText a:visited {
+	background: transparent;
+	color: #394F8D;
+	text-decoration: none;
+}
+
+.uploadFilesText a:hover {
+	background: transparent;
+	color: #394F8D;
+	text-decoration: underline;
+}
+
+.uploadFilesText a:hover {
+	background: transparent;
+	color: #394F8D;
+	text-decoration: underline;
+}
+
+.textDirectory {
+	background: transparent;
+	color: #000000;
+	font: bold 10px Verdana, Geneva, Arial, Helvetica, sans-serif;
+}
+
+.textDirectory a:link {
+	background: transparent;
+	color: #000000;
+	text-decoration: none;
+}
+
+.textDirectory a:visited {
+	background: transparent;
+	color: #000000;
+	text-decoration: none;
+}
+
+.textDirectory a:hover {
+	background: transparent;
+	color: #000000;
+	text-decoration: underline;
+}
+
+.textDirectory a:active {
+	background: transparent;
+	color: #000000;
+	text-decoration: underline;
+}
+
+.textFile {
+	color: #000000;
+	background: transparent;
+	font: 10px Verdana, Geneva, Arial, Helvetica, sans-serif;
+}
+
+.textFile a:link {
+  color: #000000;
+  background: transparent;
+  text-decoration: none;
+}
+
+.textFile a:visited {
+  color: #000000;
+  background: transparent;
+  text-decoration: none;
+}
+
+.textFile a:hover {
+  color: #000000;
+  background: transparent;
+  text-decoration: underline;
+}
+
+.textFile a:active {
+  color: #000000;
+  background: transparent;
+  text-decoration: underline;
+}
+
+.titleText {
+	color: #000000;
+	background: transparent;
+	font: bold 12px Verdana, Geneva, Arial, Helvetica, sans-serif;
+}
+
+.labelText {
+	color: #000000;
+	background: transparent;
+	font: 11px Verdana, Geneva, Arial, Helvetica, sans-serif;
+}
+
+.goBackLink {
+        display: inline;
+	color: #000000;
+	background: transparent;
+	font: bold 12px Verdana, Geneva, Arial, Helvetica, sans-serif;
+}
+
+.goBackLinkText {
+        height: 20px;
+        margin-top: 4px;
+        color: #000000;
+        background: transparent;
+        font: bold 12px Verdana, Geneva, Arial, Helvetica, sans-serif;
+}
+
+.goBackLink a:link {
+	color: #000000;
+	background: transparent;
+	text-decoration: none;
+}
+
+.goBackLink a:visited {
+	color: #000000;
+	background: transparent;
+	text-decoration: none;
+}
+
+.goBackLink a:hover {
+	color: #000000;
+	background: transparent;
+	text-decoration: underline;
+}
+
+.goBackLink a:active {
+	color: #000000;
+	background: transparent;
+	text-decoration: underline;
+}
+
+.goBackLinkText a:link {
+        color: #000000;
+        background: transparent;
+        text-decoration: none;
+}
+
+.goBackLinkText a:visited {
+        color: #000000;
+        background: transparent;
+        text-decoration: none;
+}
+
+.goBackLinkText a:hover {
+        color: #000000;
+        background: transparent;
+        text-decoration: underline;
+}
+
+.goBackLinkText a:active {
+        color: #000000;
+        background: transparent;
+        text-decoration: underline;
+}
+.spacer {
+	border: none;
+	display: block;
+}
+
+.comp {
+	border: none;
+}

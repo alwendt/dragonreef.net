@@ -1,0 +1,19 @@
+#!/bin/bash
+
+# This script creates a file showing the number
+# of times it has been executed.  Useful for 
+# background counts of html accesses and the like.
+# Written by Jay Hennigan (jay@west.net)
+# Released to the public domain 1996.
+
+
+echo
+typeset -i counter=1
+outfile=public_html/$1
+if test -s $outfile 
+then
+  read counter < $outfile
+  counter=$counter+1
+fi
+  echo $counter > $outfile
+

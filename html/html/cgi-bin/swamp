@@ -1,0 +1,70 @@
+#!/bin/bash
+
+# shell script
+# Captures all the variables from swamp.shtml, updates them in their files, and
+# redirects back to swamp.shtml.
+#  The new value goes into the history logs and into one of 5 files that get included as <TD>s
+
+function get_humidity {
+    temp = `tail -1 < /var/www/html/swamp_vars/outdoortemp | awk '{print $2}' `
+	vent = `tail -1 < /var/www/html/swamp_vars/venttemp | awk '{print $2}'`
+   /bin/echo -e  `date -u +%Y%m%d%H%M%S`'\t'$OutdoorTemp >> /var/www/html/swamp_vars/outdoortemp
+}
+
+echo 'Content-type: text/html'
+echo
+echo '<HTML>'
+echo '<head>'
+echo '<meta HTTP-EQUIV="REFRESH" content="0; url=http://www.dragonreef.net/swamp.shtml">'
+echo '</head>'
+echo '<body>'
+
+#
+#  get variables
+#
+QUERY_STRING=`head -1`
+
+#
+#  function is something like "Set Desired Temp"
+#
+function=`echo "$QUERY_STRING" | sed -n 's/^.*function=\([^&]*\).*$/\1/p' | sed "s/%20/ /g"`
+
+#
+#  Handle the 5 different functions
+#
+if [ "$function" == "Report+Humidity" ]
+then
+   Humidity=`echo "$QUERY_STRING" | sed -n 's/^.*Humidity=\([^&]*\).*$/\1/p' | sed "s/%20/ /g" | tr -d -c '[0-9]'`
+   /bin/echo -e  `date -u +%Y%m%d%H%M%S`'\t'$Humidity >> /var/www/html/swamp_vars/humidity
+   /bin/echo '<td>Humidity</td><td><INPUT type="text" name="Humidity" id="Humidity" size=5 value="'$Humidity'"></td>' > /var/www/html/public_html/humidity
+fi
+
+if [ "$function" == "Report+Outdoor+Temp" ]
+then
+   OutdoorTemp=`echo "$QUERY_STRING" | sed -n 's/^.*OutdoorTemp=\([^&]*\).*$/\1/p' | sed "s/%20/ /g" | tr -d -c '[0-9]'`
+   /bin/echo -e  `date -u +%Y%m%d%H%M%S`'\t'$OutdoorTemp >> /var/www/html/swamp_vars/outdoortemp
+   /bin/echo '<td>Outdoor Temp</td><td><INPUT type="text" name="OutdoorTemp" id="OutdoorTemp" size=5 value="'$OutdoorTemp'"></td>' > /var/www/html/public_html/outdoor_temp
+fi	
+
+if [ "$function" == "Report+Indoor+Temp" ]
+then
+   IndoorTemp=`echo "$QUERY_STRING" | sed -n 's/^.*IndoorTemp=\([^&]*\).*$/\1/p' | sed "s/%20/ /g" | tr -d -c '[0-9]'`
+   /bin/echo -e  `date -u +%Y%m%d%H%M%S`'\t'$IndoorTemp >> /var/www/html/swamp_vars/indoortemp
+   /bin/echo '<td>Indoor Temp</td><td><INPUT type="text" name="IndoorTemp" id="IndoorTemp" size=5 value="'$IndoorTemp'"></td>' > /var/www/html/public_html/indoor_temp
+fi	
+
+if [ "$function" == "Report+Vent+Temp" ]
+then
+   VentTemp=`echo "$QUERY_STRING" | sed -n 's/^.*VentTemp=\([^&]*\).*$/\1/p' | sed "s/%20/ /g" | tr -d -c '[0-9]'`
+   /bin/echo -e  `date -u +%Y%m%d%H%M%S`'\t'$VentTemp >> /var/www/html/swamp_vars/venttemp
+   /bin/echo '<td>Vent Temp</td><td><INPUT type="text" name="VentTemp" id="VentTemp" size=5 value="'$VentTemp'"></td>' > /var/www/html/public_html/vent_temp
+fi	
+
+if [ "$function" == "Set+Desired+Temp" ]
+then
+   DesiredTemp=`echo "$QUERY_STRING" | sed -n 's/^.*DesiredTemp=\([^&]*\).*$/\1/p' | sed "s/%20/ /g" | tr -d -c '[0-9]'`
+   /bin/echo -e  `date -u +%Y%m%d%H%M%S`'\t'$DesiredTemp >> /var/www/html/swamp_vars/desiredtemp
+   /bin/echo '<td>Desired Temp</td><td><INPUT type="text" name="DesiredTemp" id="DesiredTemp" size=5 value="'$DesiredTemp'"></td>' > /var/www/html/public_html/desired_temp
+fi	
+
+echo '</body>'
