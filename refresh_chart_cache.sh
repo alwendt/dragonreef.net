@@ -77,6 +77,12 @@ if [[ ${#tickers[@]} -eq 0 ]]; then
   exit 2
 fi
 
+if [[ ! -d "${repo_dir}/node_modules/playwright-core" ]]; then
+  echo "playwright-core not found in ${repo_dir}/node_modules" >&2
+  echo "run: cd ${repo_dir} && npm install" >&2
+  exit 1
+fi
+
 node "$helper_path" "${forward_args[@]}"
 
 if [[ "$archive_monthly" -eq 1 ]]; then

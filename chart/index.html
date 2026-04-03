@@ -232,6 +232,19 @@
       margin-top: 12px;
     }
 
+    .range-controls {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin: 16px 0 8px;
+    }
+
+    .range-controls button.active {
+      background: var(--accent);
+      color: white;
+      box-shadow: 0 12px 24px rgba(14, 124, 134, 0.18);
+    }
+
     .error {
       color: #b23a48;
       font-weight: 600;
@@ -278,6 +291,15 @@
         </div>
       </div>
       <div style="margin-top: 18px;">
+        <div class="range-controls" id="range-controls">
+          <button type="button" class="secondary" data-range="1M">1M</button>
+          <button type="button" class="secondary" data-range="3M">3M</button>
+          <button type="button" class="secondary" data-range="6M">6M</button>
+          <button type="button" class="secondary" data-range="1Y">1Y</button>
+          <button type="button" class="secondary" data-range="3Y">3Y</button>
+          <button type="button" class="secondary" data-range="5Y">5Y</button>
+          <button type="button" class="secondary" data-range="MAX">Max</button>
+        </div>
         <canvas id="chart"></canvas>
       </div>
       <div class="legend">
@@ -325,6 +347,7 @@
     const deltaInput = document.getElementById("delta-input");
     const delayInput = document.getElementById("delay-input");
     const optionDaysInput = document.getElementById("option-days-input");
+    const rangeControlsEl = document.getElementById("range-controls");
     const smaLegendLabelEl = document.getElementById("sma-legend-label");
     const metricFinalEl = document.getElementById("metric-final");
     const metricCagrEl = document.getElementById("metric-cagr");
@@ -340,6 +363,10 @@
     let chart;
     let smaVisible = true;
     let currentDataSource = "";
+    let latestPoints = [];
+    let latestSmaSeries = [];
+    let latestEquitySeries = [];
+    let activeRange = "MAX";
 
     function setStatus(message, isError = false) {
       statusEl.textContent = message;
@@ -677,6 +704,73 @@
       };
     }
 
+    function shiftDate(date, months) {
+      return new Date(date.getFullYear(), date.getMonth() + months, date.getDate());
+    }
+
+    function rangeStartDate(lastDate, range) {
+      switch (range) {
+        case "1M":
+          return shiftDate(lastDate, -1);
+        case "3M":
+          return shiftDate(lastDate, -3);
+        case "6M":
+          return shiftDate(lastDate, -6);
+        case "1Y":
+          return shiftDate(lastDate, -12);
+        case "3Y":
+          return shiftDate(lastDate, -36);
+        case "5Y":
+          return shiftDate(lastDate, -60);
+        default:
+          return null;
+      }
+    }
+
+    function sliceSeriesByRange(points, smaSeries, equitySeries, range) {
+      if (!points.length || range === "MAX") {
+        return { points, smaSeries, equitySeries };
+      }
+
+      const startDate = rangeStartDate(points[points.length - 1].date, range);
+      if (!startDate) {
+        return { points, smaSeries, equitySeries };
+      }
+
+      let startIndex = points.findIndex((point) => point.date >= startDate);
+      if (startIndex === -1) {
+        startIndex = 0;
+      }
+
+      return {
+        points: points.slice(startIndex),
+        smaSeries: smaSeries.slice(startIndex),
+        equitySeries: equitySeries.slice(startIndex)
+      };
+    }
+
+    function updateRangeButtons() {
+      const buttons = rangeControlsEl.querySelectorAll("button[data-range]");
+      for (const button of buttons) {
+        button.classList.toggle("active", button.dataset.range === activeRange);
+      }
+    }
+
+    function renderChartRange(config) {
+      const sliced = sliceSeriesByRange(latestPoints, latestSmaSeries, latestEquitySeries, activeRange);
+      buildChart(sliced.points, sliced.smaSeries, sliced.equitySeries, config);
+
+      if (sliced.points.length) {
+        setStatus(
+          "Showing " + sliced.points.length + " trading days from " +
+          formatDate(sliced.points[0].date) + " to " + formatDate(sliced.points[sliced.points.length - 1].date) +
+          (activeRange === "MAX" ? "." : " (" + activeRange + " view).")
+        );
+      }
+
+      updateRangeButtons();
+    }
+
     function buildChart(points, smaSeries, equitySeries, config) {
       const ctx = document.getElementById("chart").getContext("2d");
       const labels = points.map((point) => point.date);
@@ -733,6 +827,16 @@
             },
             tooltip: {
               callbacks: {
+                title: (items) => {
+                  if (!items.length) {
+                    return "";
+                  }
+                  const value = items[0].parsed.x;
+                  if (value === null || value === undefined) {
+                    return "";
+                  }
+                  return formatDate(new Date(value));
+                },
                 label: (context) => {
                   const value = context.parsed.y;
                   if (value === null || value === undefined) {
@@ -781,6 +885,9 @@
           }
         }
       });
+
+      chart.data.datasets[1].hidden = !smaVisible;
+      chart.update();
     }
 
     async function fetchCsv(url) {
@@ -806,7 +913,10 @@
         currentDataSource = source;
         const simulation = simulateStrategy(points, config);
         const stats = computeStats(simulation.equitySeries);
-        buildChart(points, simulation.smaSeries, simulation.equitySeries, config);
+        latestPoints = points;
+        latestSmaSeries = simulation.smaSeries;
+        latestEquitySeries = simulation.equitySeries;
+        renderChartRange(config);
 
         const latest = points[points.length - 1];
         latestEl.textContent = "Latest close: $" + latest.close.toFixed(2) + " (" + formatDate(latest.date) + ")";
@@ -815,13 +925,12 @@
         metricCagrEl.textContent = formatPercent(stats.cagr);
         metricMaxDdEl.textContent = formatPercent(stats.maxDrawdown);
         metricRegimeEl.textContent = simulation.currentRegime;
-        setStatus(
-          "Showing " + points.length + " trading days from " +
-          formatDate(points[0].date) + " to " + formatDate(points[points.length - 1].date) + "."
-        );
       } catch (error) {
         console.error(error);
         currentDataSource = "";
+        latestPoints = [];
+        latestSmaSeries = [];
+        latestEquitySeries = [];
         metricFinalEl.textContent = "$--";
         metricCagrEl.textContent = "--";
         metricMaxDdEl.textContent = "--";
@@ -885,10 +994,19 @@
       delayDays: getDelayDays(),
       optionDays: getOptionDays()
     };
+    updateRangeButtons();
     updateCopy(ticker, config);
     loadData(ticker, config);
 
     refreshBtn.addEventListener("click", () => rerunFromInputs(false));
+    rangeControlsEl.addEventListener("click", (event) => {
+      const button = event.target.closest("button[data-range]");
+      if (!button || !latestPoints.length) {
+        return;
+      }
+      activeRange = button.dataset.range || "MAX";
+      renderChartRange(readFormConfig());
+    });
     toggleBtn.addEventListener("click", () => {
       smaVisible = !smaVisible;
       if (chart) {
