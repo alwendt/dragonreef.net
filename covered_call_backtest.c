@@ -177,6 +177,12 @@ static double forced_sale_prob(
     return p;
 }
 
+/* Avoid selling a 20-day option when the price is only a smidge over
+ * the moving average.
+ * This code picks a time term for the call option to sell give the current price,
+ * moving average, desired probability of selling out, and the stocks volatility.
+ * It should return shorter terms when the stock is close to the moving average.
+ */
 static int choose_term(
     double price,
     double sma,
