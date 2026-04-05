@@ -226,6 +226,12 @@
       color: var(--ink);
     }
 
+    .metric-value.small {
+      font-size: 15px;
+      line-height: 1.45;
+      font-weight: 600;
+    }
+
     .status {
       font-size: 13px;
       color: var(--muted);
@@ -281,9 +287,9 @@
           <form class="ticker-form" id="ticker-form">
             <input id="ticker-input" type="text" inputmode="latin" autocomplete="off" spellcheck="false" aria-label="Ticker">
             <label class="param">MA <input id="sma-input" type="number" min="2" step="1" aria-label="Moving average window"></label>
-            <label class="param">Delta <input id="delta-input" type="number" min="0.01" max="0.99" step="0.01" aria-label="Call delta"></label>
+            <label class="param">Delta <input id="delta-input" type="number" min="0" max="0.99" step="0.01" aria-label="Call delta"></label>
             <label class="param">Delay <input id="delay-input" type="number" min="0" step="1" aria-label="Delay days"></label>
-            <label class="param">Term <input id="option-days-input" type="number" min="1" step="1" aria-label="Option days"></label>
+            <label class="param">Survival <input id="option-days-input" type="number" min="0.01" max="0.99" step="0.05" aria-label="Survival probability threshold"></label>
             <button type="submit" class="secondary">Run</button>
           </form>
           <button id="refresh">Refresh</button>
@@ -324,6 +330,38 @@
           <div class="metric-label">Regime</div>
           <div class="metric-value" id="metric-regime">--</div>
         </div>
+        <div class="metric-card">
+          <div class="metric-label">Suggested Term</div>
+          <div class="metric-value" id="metric-suggested-term">--</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Expirations</div>
+          <div class="metric-value" id="metric-expirations">--</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Forced Sales</div>
+          <div class="metric-value" id="metric-forced-sales">--</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Callouts | ITM Loss</div>
+          <div class="metric-value" id="metric-callouts">--</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Survival %</div>
+          <div class="metric-value" id="metric-survival-pct">--</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Calls By Term</div>
+          <div class="metric-value small" id="metric-term-breakdown">--</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Call Layer P&L</div>
+          <div class="metric-value" id="metric-call-layer-pnl">--</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">% Time In Market</div>
+          <div class="metric-value" id="metric-time-in-market">--</div>
+        </div>
       </div>
       <div class="status" id="status">Loading data...</div>
     </section>
@@ -353,10 +391,18 @@
     const metricCagrEl = document.getElementById("metric-cagr");
     const metricMaxDdEl = document.getElementById("metric-maxdd");
     const metricRegimeEl = document.getElementById("metric-regime");
+    const metricSuggestedTermEl = document.getElementById("metric-suggested-term");
+    const metricExpirationsEl = document.getElementById("metric-expirations");
+    const metricForcedSalesEl = document.getElementById("metric-forced-sales");
+    const metricCalloutsEl = document.getElementById("metric-callouts");
+    const metricSurvivalPctEl = document.getElementById("metric-survival-pct");
+    const metricTermBreakdownEl = document.getElementById("metric-term-breakdown");
+    const metricCallLayerPnlEl = document.getElementById("metric-call-layer-pnl");
+    const metricTimeInMarketEl = document.getElementById("metric-time-in-market");
     const DEFAULT_SMA_WINDOW = 120;
-    const DEFAULT_OPTION_DAYS = 10;
     const DEFAULT_DELAY_DAYS = 10;
     const DEFAULT_DELTA = 0.20;
+    const DEFAULT_SURVIVAL_THRESHOLD = 0.50;
     const STARTING_EQUITY = 1000;
     const CASH_RATE = 0.04;
     const DAYS_PER_YEAR = 252;
@@ -431,8 +477,8 @@
       return parseIntParam(["SMA", "sma", "MA", "ma"], DEFAULT_SMA_WINDOW, 2);
     }
 
-    function getOptionDays() {
-      return parseIntParam(["OPTION_DAYS", "option_days", "optionDays", "term"], DEFAULT_OPTION_DAYS, 1);
+    function getSurvivalThreshold() {
+      return parseFloatParam(["SURVIVAL_PROB", "survival_prob", "survivalProb", "SURVIVAL"], DEFAULT_SURVIVAL_THRESHOLD, 0.01, 0.99);
     }
 
     function getDelayDays() {
@@ -440,7 +486,7 @@
     }
 
     function getDelta() {
-      return parseFloatParam(["DELTA", "delta"], DEFAULT_DELTA, 0.01, 0.99);
+      return parseFloatParam(["DELTA", "delta"], DEFAULT_DELTA, 0, 0.99);
     }
 
     function resolveSymbol(ticker) {
@@ -581,6 +627,96 @@
       return sampleStdDev(returns) * Math.sqrt(DAYS_PER_YEAR);
     }
 
+    function estimateDrift(points, endIndexExclusive) {
+      const start = Math.max(1, endIndexExclusive - 20);
+      const logReturns = [];
+      for (let i = start; i < endIndexExclusive; i += 1) {
+        const prior = points[i - 1].close;
+        const current = points[i].close;
+        if (prior > 0 && current > 0) {
+          logReturns.push(Math.log(current / prior));
+        }
+      }
+      if (logReturns.length < 2) {
+        return 0;
+      }
+      const mean = logReturns.reduce((sum, value) => sum + value, 0) / logReturns.length;
+      return mean * DAYS_PER_YEAR;
+    }
+
+    function forcedSaleProbability(price, sma, sigmaAnn, muAnn, days) {
+      if (days <= 0) {
+        return 0;
+      }
+      if (!(price > 0) || !(sma > 0)) {
+        return 1;
+      }
+      if (price <= sma) {
+        return 1;
+      }
+
+      const time = days / DAYS_PER_YEAR;
+      const distance = Math.log(price / sma);
+
+      if (sigmaAnn < 1e-12) {
+        if (muAnn >= 0) {
+          return 0;
+        }
+        return distance + muAnn * time <= 0 ? 1 : 0;
+      }
+
+      const sigmaSquared = sigmaAnn * sigmaAnn;
+      const denominator = sigmaAnn * Math.sqrt(time);
+      const z1 = (-distance - muAnn * time) / denominator;
+      const z2 = (-distance + muAnn * time) / denominator;
+      let probability = normCdf(z1) + Math.exp((-2 * muAnn * distance) / sigmaSquared) * normCdf(z2);
+      probability = Math.max(0, Math.min(1, probability));
+      return probability;
+    }
+
+    function chooseSuggestedTerm(points, smaSeries, index, targetSurvival = DEFAULT_SURVIVAL_THRESHOLD) {
+      if (getDelta() <= 0) {
+        return {
+          termDays: 0,
+          estSurvival: 0
+        };
+      }
+
+      const price = points[index].close;
+      const sma = smaSeries[index];
+
+      if (sma === null) {
+        return {
+          termDays: 20,
+          estSurvival: 1
+        };
+      }
+
+      if (!(price > sma)) {
+        return {
+          termDays: 0,
+          estSurvival: 0
+        };
+      }
+
+      const sigma = estimateSigma(points, index);
+      const drift = estimateDrift(points, index);
+      for (const termDays of [20, 15, 10, 5]) {
+        const survival = 1 - forcedSaleProbability(price, sma, sigma, drift, termDays);
+        if (survival >= targetSurvival) {
+          return {
+            termDays,
+            estSurvival: survival
+          };
+        }
+      }
+
+      return {
+        termDays: 0,
+        estSurvival: 0
+      };
+    }
+
     function optionMarketValue(activeOption, spot, index) {
       if (!activeOption) {
         return 0;
@@ -599,6 +735,21 @@
       let reentryIndex = -1;
       let currentRegime = "Invested";
       const equitySeries = [];
+      let sales = 0;
+      let expirations = 0;
+      let forcedSales = 0;
+      let callouts = 0;
+      let calloutLossDollars = 0;
+      let callSalesDollars = 0;
+      let forcedPurchaseDollars = 0;
+      let investedDays = 0;
+      const termCounts = {
+        0: 0,
+        5: 0,
+        10: 0,
+        15: 0,
+        20: 0
+      };
 
       for (let i = 0; i < points.length; i += 1) {
         const price = points[i].close;
@@ -607,14 +758,23 @@
         let justExited = false;
 
         if (invested && activeOption && activeOption.expirationIndex === i) {
+          if (price > activeOption.strike) {
+            callouts += 1;
+            calloutLossDollars += shares * (price - activeOption.strike);
+          }
           const settledEquity = cash + shares * price - shares * Math.max(0, price - activeOption.strike);
           shares = settledEquity / price;
           cash = 0;
           activeOption = null;
+          expirations += 1;
         }
 
         if (invested && hasSma && price < sma) {
           const optionValue = optionMarketValue(activeOption, price, i);
+          if (activeOption) {
+            forcedSales += 1;
+            forcedPurchaseDollars += shares * optionValue;
+          }
           cash = cash + shares * price - shares * optionValue;
           shares = 0;
           activeOption = null;
@@ -637,29 +797,59 @@
         }
 
         if (invested && !activeOption) {
-          const expirationIndex = Math.min(i + config.optionDays, points.length - 1);
-          const timeToExpiry = Math.max((expirationIndex - i) / DAYS_PER_YEAR, 1 / DAYS_PER_YEAR);
-          const sigma = estimateSigma(points, i);
-          const strike = findStrike(price, timeToExpiry, CASH_RATE, sigma, config.delta);
-          const premium = callPrice(price, strike, timeToExpiry, CASH_RATE, sigma);
-          cash += shares * premium;
-          activeOption = {
-            strike,
-            sigma,
-            expirationIndex
-          };
+          const suggestion = config.delta <= 0
+            ? { termDays: 0, estSurvival: 0 }
+            : chooseSuggestedTerm(points, smaSeries, i, config.survivalThreshold);
+          termCounts[suggestion.termDays] += 1;
+          if (suggestion.termDays > 0) {
+            const expirationIndex = Math.min(i + suggestion.termDays, points.length - 1);
+            const timeToExpiry = Math.max((expirationIndex - i) / DAYS_PER_YEAR, 1 / DAYS_PER_YEAR);
+            const sigma = estimateSigma(points, i);
+            const strike = findStrike(price, timeToExpiry, CASH_RATE, sigma, config.delta);
+            const premium = callPrice(price, strike, timeToExpiry, CASH_RATE, sigma);
+            cash += shares * premium;
+            callSalesDollars += shares * premium;
+            activeOption = {
+              strike,
+              sigma,
+              expirationIndex
+            };
+            sales += 1;
+          }
         }
 
         const optionValue = invested ? optionMarketValue(activeOption, price, i) : 0;
         const equity = invested ? cash + shares * price - shares * optionValue : cash;
+        if (invested) {
+          investedDays += 1;
+        }
         equitySeries.push(equity);
       }
 
       return {
         smaSeries,
         equitySeries,
-        currentRegime
+        currentRegime,
+        sales,
+        expirations,
+        forcedSales,
+        callouts,
+        calloutLossDollars,
+        realizedSurvival: sales > 0 ? (expirations / sales) : 0,
+        termCounts,
+        callLayerPnl: callSalesDollars - forcedPurchaseDollars,
+        timeInMarket: points.length > 0 ? (investedDays / points.length) : 0
       };
+    }
+
+    function formatTermBreakdown(termCounts) {
+      return [
+        "20d: " + termCounts[20],
+        "15d: " + termCounts[15],
+        "10d: " + termCounts[10],
+        "5d: " + termCounts[5],
+        "No sale: " + termCounts[0]
+      ].join(" | ");
     }
 
     function formatDate(date) {
@@ -919,12 +1109,23 @@
         renderChartRange(config);
 
         const latest = points[points.length - 1];
+        const suggestion = config.delta <= 0
+          ? { termDays: 0, estSurvival: 0 }
+          : chooseSuggestedTerm(points, simulation.smaSeries, points.length - 1, config.survivalThreshold);
         latestEl.textContent = "Latest close: $" + latest.close.toFixed(2) + " (" + formatDate(latest.date) + ")";
         dataSourceEl.textContent = currentDataSource || ("Daily prices (" + ticker + ")");
         metricFinalEl.textContent = formatMoney(stats.finalEquity);
         metricCagrEl.textContent = formatPercent(stats.cagr);
         metricMaxDdEl.textContent = formatPercent(stats.maxDrawdown);
         metricRegimeEl.textContent = simulation.currentRegime;
+        metricSuggestedTermEl.textContent = suggestion.termDays > 0 ? (String(suggestion.termDays) + " days") : "No sale";
+        metricExpirationsEl.textContent = String(simulation.expirations);
+        metricForcedSalesEl.textContent = String(simulation.forcedSales);
+        metricCalloutsEl.textContent = String(simulation.callouts) + " | " + formatMoney(simulation.calloutLossDollars);
+        metricSurvivalPctEl.textContent = formatPercent(simulation.realizedSurvival);
+        metricTermBreakdownEl.textContent = formatTermBreakdown(simulation.termCounts);
+        metricCallLayerPnlEl.textContent = formatMoney(simulation.callLayerPnl);
+        metricTimeInMarketEl.textContent = formatPercent(simulation.timeInMarket);
       } catch (error) {
         console.error(error);
         currentDataSource = "";
@@ -935,6 +1136,14 @@
         metricCagrEl.textContent = "--";
         metricMaxDdEl.textContent = "--";
         metricRegimeEl.textContent = "--";
+        metricSuggestedTermEl.textContent = "--";
+        metricExpirationsEl.textContent = "--";
+        metricForcedSalesEl.textContent = "--";
+        metricCalloutsEl.textContent = "--";
+        metricSurvivalPctEl.textContent = "--";
+        metricTermBreakdownEl.textContent = "--";
+        metricCallLayerPnlEl.textContent = "--";
+        metricTimeInMarketEl.textContent = "--";
         setStatus("Could not load data for " + ticker + ".", true);
       }
     }
@@ -944,14 +1153,14 @@
       document.title = ticker + " covered call backtest";
       eyebrowEl.textContent = ticker + " covered call backtest";
       headlineEl.textContent = ticker + " strategy with " + config.smaWindow + "-day MA";
-      subheadEl.textContent = "Full-history backtest with " + formatPercent(config.delta) + " delta calls, " + config.optionDays + "-day option terms, a " + config.delayDays + "-day cooldown after MA breakdowns, and 4% cash yield while out of market.";
+      subheadEl.textContent = "Full-history backtest with " + formatPercent(config.delta) + " delta calls, adaptive 20/15/10/5-day terms driven by a " + formatPercent(config.survivalThreshold) + " survival threshold, a " + config.delayDays + "-day cooldown after MA breakdowns, and 4% cash yield while out of market.";
       dataSourceEl.textContent = currentDataSource || ("Daily prices (" + symbol + ")");
       smaLegendLabelEl.textContent = "SMA " + config.smaWindow;
       tickerInput.value = ticker;
       smaInput.value = String(config.smaWindow);
       deltaInput.value = config.delta.toFixed(2);
       delayInput.value = String(config.delayDays);
-      optionDaysInput.value = String(config.optionDays);
+      optionDaysInput.value = config.survivalThreshold.toFixed(2);
     }
 
     function buildTargetUrl(raw, config) {
@@ -961,16 +1170,16 @@
         "?SMA=" + encodeURIComponent(config.smaWindow) +
         "&DELTA=" + encodeURIComponent(config.delta.toFixed(2)) +
         "&DELAY=" + encodeURIComponent(config.delayDays) +
-        "&OPTION_DAYS=" + encodeURIComponent(config.optionDays)
+        "&SURVIVAL_PROB=" + encodeURIComponent(config.survivalThreshold.toFixed(2))
       );
     }
 
     function readFormConfig() {
       return {
         smaWindow: Math.max(2, Number.parseInt(smaInput.value || String(DEFAULT_SMA_WINDOW), 10)),
-        delta: Math.min(0.99, Math.max(0.01, Number.parseFloat(deltaInput.value || String(DEFAULT_DELTA)))),
+        delta: Math.min(0.99, Math.max(0, Number.parseFloat(deltaInput.value || String(DEFAULT_DELTA)))),
         delayDays: Math.max(0, Number.parseInt(delayInput.value || String(DEFAULT_DELAY_DAYS), 10)),
-        optionDays: Math.max(1, Number.parseInt(optionDaysInput.value || String(DEFAULT_OPTION_DAYS), 10))
+        survivalThreshold: Math.min(0.99, Math.max(0.01, Number.parseFloat(optionDaysInput.value || String(DEFAULT_SURVIVAL_THRESHOLD))))
       };
     }
 
@@ -992,7 +1201,7 @@
       smaWindow: getSmaWindow(),
       delta: getDelta(),
       delayDays: getDelayDays(),
-      optionDays: getOptionDays()
+      survivalThreshold: getSurvivalThreshold()
     };
     updateRangeButtons();
     updateCopy(ticker, config);

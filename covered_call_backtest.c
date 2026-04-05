@@ -1,17 +1,13 @@
-
-// covered_call_backtest_fast.c
+// covered_call_backtest.c
 //
 // build:
-//   gcc -O3 -march=native -ffast-math -o covered_call_backtest_fast covered_call_backtest_fast.c -lm
-//
-// with OpenMP:
-//   gcc -O3 -march=native -ffast-math -fopenmp -o covered_call_backtest_fast covered_call_backtest_fast.c -lm
+//   gcc -O3 -march=native -ffast-math -fopenmp -o covered_call_backtest covered_call_backtest.c -lm
 //
 // example single run:
-//   ./covered_call_backtest_fast --csv VOO.csv --ticker VOO --ma 200 --option-days 20 --delta 0.20 --delay-days 5
+//   ./covered_call_backtest --csv VOO.csv --ticker VOO --ma 200 --delta 0.20 --delay-days 5 --survival-prob 0.80
 //
 // example grid search:
-//   ./covered_call_backtest_fast --csv VOO.csv --ticker VOO --grid
+//   ./covered_call_backtest --csv VOO.csv --ticker VOO --grid
 //
 // expected CSV columns:
 //   date,open,high,low,close
@@ -33,7 +29,6 @@
 #define DAYS_PER_YEAR 252.0
 #define INITIAL_CAPACITY 4096
 #define LINE_BUF 4096
-
 #define MAX_MA_CACHE 512
 
 typedef struct {
@@ -62,22 +57,34 @@ typedef struct {
     double CAGR;
     double MaxDD;
     double Final;
+    double AvgTerm;
+    double AvgEstSurvival;
+    int Sales;
+    int ForcedExits;
+    int Expirations;
 } Stats;
 
 typedef struct {
     const char *csv_path;
     const char *ticker;
     int ma;
-    int option_days;
     int delay_days;
     double delta;
+    double survival_prob;
     int grid;
 } Args;
 
 typedef struct {
     int ma;
-    double *values;   // length n, NAN before available
+    double *values;
 } SmaCacheEntry;
+
+typedef struct {
+    int ma;
+    int delay_days;
+    double delta;
+    double survival_prob;
+} Job;
 
 static SmaCacheEntry sma_cache[MAX_MA_CACHE];
 static int sma_cache_count = 0;
@@ -90,12 +97,6 @@ static void die(const char *msg) {
 static void *xmalloc(size_t n) {
     void *p = malloc(n);
     if (!p) die("malloc failed");
-    return p;
-}
-
-static void *xcalloc(size_t count, size_t size) {
-    void *p = calloc(count, size);
-    if (!p) die("calloc failed");
     return p;
 }
 
@@ -128,7 +129,6 @@ static double call_price(double S, double K, double T, double r, double sigma) {
     return S * norm_cdf(d1) - K * exp(-r * T) * norm_cdf(d2);
 }
 
-// Delta decreases monotonically with strike for a call, so binary search works.
 static double find_strike_fast(double S, double T, double r, double sigma, double target_delta) {
     double lo = 0.50 * S;
     double hi = 1.50 * S;
@@ -143,6 +143,62 @@ static double find_strike_fast(double S, double T, double r, double sigma, doubl
         }
     }
     return 0.5 * (lo + hi);
+}
+
+static double forced_sale_prob(
+    double price,
+    double sma,
+    double sigma_ann,
+    double mu_ann,
+    int days
+) {
+    if (days <= 0) return 0.0;
+    if (!(price > 0.0) || !(sma > 0.0)) return 1.0;
+    if (price <= sma) return 1.0;
+
+    double T = days / DAYS_PER_YEAR;
+    double x = log(price / sma);
+
+    if (sigma_ann < 1e-12) {
+        if (mu_ann >= 0.0) return 0.0;
+        return (x + mu_ann * T <= 0.0) ? 1.0 : 0.0;
+    }
+
+    double sig2 = sigma_ann * sigma_ann;
+    double denom = sigma_ann * sqrt(T);
+
+    double z1 = (-x - mu_ann * T) / denom;
+    double z2 = (-x + mu_ann * T) / denom;
+
+    double p = norm_cdf(z1) + exp(-2.0 * mu_ann * x / sig2) * norm_cdf(z2);
+
+    if (p < 0.0) p = 0.0;
+    if (p > 1.0) p = 1.0;
+    return p;
+}
+
+static int choose_term(
+    double price,
+    double sma,
+    double sigma_ann,
+    double mu_ann,
+    double target_survival,
+    double *est_survival_out
+) {
+    const int terms[] = {20, 15, 10, 5};
+    const int n_terms = (int)(sizeof(terms) / sizeof(terms[0]));
+
+    for (int i = 0; i < n_terms; i++) {
+        double forced = forced_sale_prob(price, sma, sigma_ann, mu_ann, terms[i]);
+        double survival = 1.0 - forced;
+        if (survival >= target_survival) {
+            *est_survival_out = survival;
+            return terms[i];
+        }
+    }
+
+    *est_survival_out = 0.0;
+    return 0;
 }
 
 static void data_init(Data *d) {
@@ -181,7 +237,6 @@ static int parse_csv_line(char *line, Row *row) {
         }
     }
 
-    // skip header
     if (!strcasecmp(fields[0], "date")) return 0;
 
     snprintf(row->date, sizeof(row->date), "%s", fields[0]);
@@ -210,6 +265,7 @@ static void load_csv(const char *path, Data *d) {
     fclose(fp);
 
     if (d->n == 0) die("no data rows found in csv");
+    if (d->rows[0].close <= 0.0) die("bad first close in csv");
 
     d->rows[0].daily_ret = 0.0;
     for (size_t i = 1; i < d->n; i++) {
@@ -249,16 +305,12 @@ static const double *get_sma_array(const Data *d, int window) {
     return sma_cache[sma_cache_count - 1].values;
 }
 
-// Matches Python:
-// hist = daily_ret[max(1, i-20):i]
-// sigma = hist.std(ddof=1) * sqrt(252) if len(hist)>=2 else 0.20
 static double *precompute_sigma20(const Data *d) {
     double *sigma = (double *)xmalloc(d->n * sizeof(double));
 
     double sum = 0.0;
     double sumsq = 0.0;
 
-    // rolling window over daily_ret[1..]
     for (size_t i = 0; i < d->n; i++) {
         int add_idx = (int)i - 1;
         if (add_idx >= 1) {
@@ -292,23 +344,62 @@ static double *precompute_sigma20(const Data *d) {
     return sigma;
 }
 
+static double *precompute_drift20(const Data *d) {
+    double *drift = (double *)xmalloc(d->n * sizeof(double));
+    double sum = 0.0;
+
+    for (size_t i = 0; i < d->n; i++) {
+        int add_idx = (int)i - 1;
+        if (add_idx >= 1) {
+            double x = log(d->rows[add_idx].close / d->rows[add_idx - 1].close);
+            sum += x;
+        }
+
+        int remove_idx = (int)i - 21;
+        if (remove_idx >= 1) {
+            double x = log(d->rows[remove_idx].close / d->rows[remove_idx - 1].close);
+            sum -= x;
+        }
+
+        int start = (int)i - 20;
+        if (start < 1) start = 1;
+        int end = (int)i;
+        int n = end - start;
+
+        if (n < 2) {
+            drift[i] = 0.0;
+        } else {
+            drift[i] = (sum / (double)n) * DAYS_PER_YEAR;
+        }
+    }
+
+    return drift;
+}
+
 static Stats simulate(
     const Data *d,
     const double *sma,
     const double *sigma20,
+    const double *drift20,
     int delay_days,
     double target_delta,
-    int option_days
+    double target_survival
 ) {
     int invested = 1;
     double shares = 1.0 / d->rows[0].close;
     double cash = 0.0;
     OptionPos opt = {0, 0.0, 0.0, -1};
     int reentry_index = -1;
+    int expirations = 0;
+    int forced_exits = 0;
 
     double peak = -1.0;
     double maxdd = 0.0;
     double final_equity = 0.0;
+
+    double total_term = 0.0;
+    double total_est_survival = 0.0;
+    int sales = 0;
 
     for (int i = 0; i < (int)d->n; i++) {
         double price = d->rows[i].close;
@@ -321,6 +412,7 @@ static Stats simulate(
             shares = settled_equity / price;
             cash = 0.0;
             opt.active = 0;
+            expirations++;
         }
 
         if (invested && has_sma && price < sma[i]) {
@@ -330,6 +422,7 @@ static Stats simulate(
                 if (remaining_days < 0) remaining_days = 0;
                 double T = remaining_days > 0 ? remaining_days / DAYS_PER_YEAR : 0.0;
                 option_value = call_price(price, opt.strike, T, RISK_FREE, opt.sigma);
+                forced_exits++;
             }
             cash = cash + shares * price - shares * option_value;
             shares = 0.0;
@@ -351,21 +444,44 @@ static Stats simulate(
         }
 
         if (invested && !opt.active) {
-            int expiration_index = i + option_days;
-            if (expiration_index >= (int)d->n) expiration_index = (int)d->n - 1;
+            int option_days = 0;
+            double est_survival = 0.0;
 
-            double T = (expiration_index - i) / DAYS_PER_YEAR;
-            if (T < 1.0 / DAYS_PER_YEAR) T = 1.0 / DAYS_PER_YEAR;
+            if (has_sma) {
+                option_days = choose_term(
+                    price,
+                    sma[i],
+                    sigma20[i],
+                    drift20[i],
+                    target_survival,
+                    &est_survival
+                );
+            } else {
+                option_days = 20;
+                est_survival = 1.0;
+            }
 
-            double sigma = sigma20[i];
-            double strike = find_strike_fast(price, T, RISK_FREE, sigma, target_delta);
-            double premium = call_price(price, strike, T, RISK_FREE, sigma);
+            if (option_days > 0) {
+                int expiration_index = i + option_days;
+                if (expiration_index >= (int)d->n) expiration_index = (int)d->n - 1;
 
-            cash += shares * premium;
-            opt.active = 1;
-            opt.strike = strike;
-            opt.sigma = sigma;
-            opt.expiration_index = expiration_index;
+                double T = (expiration_index - i) / DAYS_PER_YEAR;
+                if (T < 1.0 / DAYS_PER_YEAR) T = 1.0 / DAYS_PER_YEAR;
+
+                double sigma = sigma20[i];
+                double strike = find_strike_fast(price, T, RISK_FREE, sigma, target_delta);
+                double premium = call_price(price, strike, T, RISK_FREE, sigma);
+
+                cash += shares * premium;
+                opt.active = 1;
+                opt.strike = strike;
+                opt.sigma = sigma;
+                opt.expiration_index = expiration_index;
+
+                total_term += option_days;
+                total_est_survival += est_survival;
+                sales++;
+            }
         }
 
         double option_value = 0.0;
@@ -386,16 +502,23 @@ static Stats simulate(
 
     Stats s;
     s.Final = final_equity;
-    double years = ((double)d->n - 1.0) / DAYS_PER_YEAR;
-    if (years < 1.0 / DAYS_PER_YEAR) years = 1.0 / DAYS_PER_YEAR;
-    s.CAGR = pow(s.Final, 1.0 / years) - 1.0;
+    {
+        double years = ((double)d->n - 1.0) / DAYS_PER_YEAR;
+        if (years < 1.0 / DAYS_PER_YEAR) years = 1.0 / DAYS_PER_YEAR;
+        s.CAGR = pow(s.Final, 1.0 / years) - 1.0;
+    }
     s.MaxDD = maxdd;
+    s.Sales = sales;
+    s.AvgTerm = (sales > 0) ? (total_term / (double)sales) : 0.0;
+    s.AvgEstSurvival = (sales > 0) ? (total_est_survival / (double)sales) : 0.0;
+    s.ForcedExits = forced_exits;
+    s.Expirations = expirations;
     return s;
 }
 
 static void usage(const char *prog) {
     fprintf(stderr,
-        "usage: %s --csv FILE [--ticker TICKER] [--ma N] [--option-days N] [--delta X] [--delay-days N] [--grid]\n",
+        "usage: %s --csv FILE [--ticker TICKER] [--ma N] [--delta X] [--delay-days N] [--survival-prob X] [--grid]\n",
         prog
     );
     exit(1);
@@ -406,9 +529,9 @@ static Args parse_args(int argc, char **argv) {
     a.csv_path = NULL;
     a.ticker = "VOO";
     a.ma = 200;
-    a.option_days = 10;
     a.delay_days = 5;
     a.delta = 0.30;
+    a.survival_prob = 0.80;
     a.grid = 0;
 
     for (int i = 1; i < argc; i++) {
@@ -421,15 +544,15 @@ static Args parse_args(int argc, char **argv) {
         } else if (!strcmp(argv[i], "--ma")) {
             if (++i >= argc) usage(argv[0]);
             a.ma = atoi(argv[i]);
-        } else if (!strcmp(argv[i], "--option-days")) {
-            if (++i >= argc) usage(argv[0]);
-            a.option_days = atoi(argv[i]);
         } else if (!strcmp(argv[i], "--delay-days")) {
             if (++i >= argc) usage(argv[0]);
             a.delay_days = atoi(argv[i]);
         } else if (!strcmp(argv[i], "--delta")) {
             if (++i >= argc) usage(argv[0]);
             a.delta = atof(argv[i]);
+        } else if (!strcmp(argv[i], "--survival-prob")) {
+            if (++i >= argc) usage(argv[0]);
+            a.survival_prob = atof(argv[i]);
         } else if (!strcmp(argv[i], "--grid")) {
             a.grid = 1;
         } else {
@@ -441,36 +564,34 @@ static Args parse_args(int argc, char **argv) {
     return a;
 }
 
-typedef struct {
-    int ma;
-    int option_days;
-    int delay_days;
-    double delta;
-} Job;
-
-static void run_grid(const Data *d, const char *ticker, const double *sigma20) {
+static void run_grid(
+    const Data *d,
+    const char *ticker,
+    const double *sigma20,
+    const double *drift20
+) {
     const int mas[] = {125, 150, 175, 200, 225};
-    const int terms[] = {5, 10, 15, 20};
     const int delays[] = {0, 5, 10};
     const double deltas[] = {0.10, 0.15, 0.20, 0.25, 0.30};
+    const double survival_probs[] = {0.50, 0.60, 0.70, 0.80, 0.90, 0.95};
 
     const int n_mas = (int)(sizeof(mas) / sizeof(mas[0]));
-    const int n_terms = (int)(sizeof(terms) / sizeof(terms[0]));
     const int n_delays = (int)(sizeof(delays) / sizeof(delays[0]));
     const int n_deltas = (int)(sizeof(deltas) / sizeof(deltas[0]));
+    const int n_surv = (int)(sizeof(survival_probs) / sizeof(survival_probs[0]));
 
-    int njobs = n_mas * n_terms * n_delays * n_deltas;
+    int njobs = n_mas * n_delays * n_deltas * n_surv;
     Job *jobs = (Job *)xmalloc(njobs * sizeof(Job));
     int k = 0;
 
     for (int i = 0; i < n_mas; i++) {
-        for (int j = 0; j < n_terms; j++) {
-            for (int m = 0; m < n_delays; m++) {
-                for (int n = 0; n < n_deltas; n++) {
+        for (int j = 0; j < n_delays; j++) {
+            for (int m = 0; m < n_deltas; m++) {
+                for (int n = 0; n < n_surv; n++) {
                     jobs[k].ma = mas[i];
-                    jobs[k].option_days = terms[j];
-                    jobs[k].delay_days = delays[m];
-                    jobs[k].delta = deltas[n];
+                    jobs[k].delay_days = delays[j];
+                    jobs[k].delta = deltas[m];
+                    jobs[k].survival_prob = survival_probs[n];
                     k++;
                 }
             }
@@ -489,17 +610,32 @@ static void run_grid(const Data *d, const char *ticker, const double *sigma20) {
         #pragma omp for schedule(dynamic)
         for (int i = 0; i < njobs; i++) {
             const double *sma = get_sma_array(d, jobs[i].ma);
-            Stats s = simulate(d, sma, sigma20, jobs[i].delay_days, jobs[i].delta, jobs[i].option_days);
+            Stats s = simulate(
+                d,
+                sma,
+                sigma20,
+                drift20,
+                jobs[i].delay_days,
+                jobs[i].delta,
+                jobs[i].survival_prob
+            );
 
             #pragma omp critical
             {
+                double forced_rate = (s.Sales > 0) ? ((double)s.ForcedExits / s.Sales) : 0.0;
                 printf(
-                    "ticker=%s ma=%d option_days=%d delay_days=%d delta=%.2f CAGR=%.4f%% MaxDD=%.4f%% Final=%.4f\n",
+                    "ticker=%s ma=%d delay_days=%d delta=%.2f survival_prob=%.2f forced_rate = %.3f forced_exits=%d expirations=%d avg_term=%.2f avg_est_survival=%.4f sales=%d CAGR=%.4f%% MaxDD=%.4f%% Final=%.4f\n",
                     ticker,
                     jobs[i].ma,
-                    jobs[i].option_days,
                     jobs[i].delay_days,
                     jobs[i].delta,
+                    jobs[i].survival_prob,
+		    forced_rate,
+		    s.ForcedExits,
+		    s.Expirations,
+                    s.AvgTerm,
+                    s.AvgEstSurvival,
+                    s.Sales,
                     s.CAGR * 100.0,
                     s.MaxDD * 100.0,
                     s.Final
@@ -522,13 +658,20 @@ static void run_grid(const Data *d, const char *ticker, const double *sigma20) {
         }
     }
 
+    double forced_rate = (best_stats.Sales > 0) ? ((double)best_stats.ForcedExits / best_stats.Sales) : 0.0;
     printf(
-        "\nBEST: ticker=%s ma=%d option_days=%d delay_days=%d delta=%.2f CAGR=%.4f%% MaxDD=%.4f%% Final=%.4f\n",
+        "\nBEST: ticker=%s ma=%d delay_days=%d delta=%.2f survival_prob=%.2f forced_rate = %.3f forced_exits=%d expirations=%d avg_term=%.2f avg_est_survival=%.4f sales=%d CAGR=%.4f%% MaxDD=%.4f%% Final=%.4f\n",
         ticker,
         best_job.ma,
-        best_job.option_days,
         best_job.delay_days,
         best_job.delta,
+        best_job.survival_prob,
+        forced_rate,
+        best_stats.ForcedExits,
+        best_stats.Expirations,
+        best_stats.AvgTerm,
+        best_stats.AvgEstSurvival,
+        best_stats.Sales,
         best_stats.CAGR * 100.0,
         best_stats.MaxDD * 100.0,
         best_stats.Final
@@ -545,20 +688,36 @@ int main(int argc, char **argv) {
     load_csv(args.csv_path, &d);
 
     double *sigma20 = precompute_sigma20(&d);
+    double *drift20 = precompute_drift20(&d);
 
     if (args.grid) {
-        run_grid(&d, args.ticker, sigma20);
+        run_grid(&d, args.ticker, sigma20, drift20);
     } else {
         const double *sma = get_sma_array(&d, args.ma);
-        Stats s = simulate(&d, sma, sigma20, args.delay_days, args.delta, args.option_days);
-
-        printf(
-            "ticker=%s ma=%d option_days=%d delay_days=%d delta=%.2f CAGR=%.4f%% MaxDD=%.4f%% Final=%.4f\n",
-            args.ticker,
-            args.ma,
-            args.option_days,
+        Stats s = simulate(
+            &d,
+            sma,
+            sigma20,
+            drift20,
             args.delay_days,
             args.delta,
+            args.survival_prob
+        );
+
+        double forced_rate = (s.Sales > 0) ? ((double)s.ForcedExits / s.Sales) : 0.0;
+        printf(
+            "ticker=%s ma=%d delay_days=%d delta=%.2f survival_prob=%.2f forced_rate = %.3f forced_exits=%d expirations=%d avg_term=%.2f avg_est_survival=%.4f sales=%d CAGR=%.4f%% MaxDD=%.4f%% Final=%.4f\n",
+            args.ticker,
+            args.ma,
+            args.delay_days,
+            args.delta,
+            args.survival_prob,
+            forced_rate,
+            s.ForcedExits,
+            s.Expirations,
+            s.AvgTerm,
+            s.AvgEstSurvival,
+            s.Sales,
             s.CAGR * 100.0,
             s.MaxDD * 100.0,
             s.Final
@@ -568,6 +727,7 @@ int main(int argc, char **argv) {
     for (int i = 0; i < sma_cache_count; i++) {
         free(sma_cache[i].values);
     }
+    free(drift20);
     free(sigma20);
     free(d.rows);
     return 0;
