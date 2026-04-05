@@ -30,7 +30,7 @@ except ImportError:
     yf = None
 
 
-RISK_FREE = 0.035
+RISK_FREE = 0.04
 DAYS_PER_YEAR = 252
 
 
@@ -223,7 +223,7 @@ def call_price(S, K, T, r, sigma):
 
 def stats(df):
     total = df["equity"].iloc[-1]
-    years = len(df) / DAYS_PER_YEAR
+    years = max((len(df) - 1) / DAYS_PER_YEAR, 1.0 / DAYS_PER_YEAR)
     cagr = total ** (1.0 / years) - 1.0
 
     peak = df["equity"].cummax()
@@ -240,68 +240,92 @@ def simulate(df, delay_days, target_delta, option_days, ma_window):
     df = df.copy()
     df["sma"] = df["close"].rolling(ma_window).mean()
     df["daily_ret"] = df["close"].pct_change()
+    invested = True
+    shares = 1.0 / float(df.iloc[0]["close"])
+    cash = 0.0
+    active_option = None
+    reentry_index = -1
+    equity_curve = []
 
-    in_market = True
-    days_above = 0
-    equity = 1.0
-    equity_curve = [equity]
+    for i in range(len(df)):
+        price = float(df.iloc[i]["close"])
+        sma = df.iloc[i]["sma"]
+        has_sma = not pd.isna(sma)
+        just_exited = False
 
-    i = 1
-    while i < len(df):
-        row = df.iloc[i]
+        if invested and active_option and active_option["expiration_index"] == i:
+            settled_equity = (
+                cash
+                + shares * price
+                - shares * max(0.0, price - active_option["strike"])
+            )
+            shares = settled_equity / price
+            cash = 0.0
+            active_option = None
 
-        if pd.isna(row["sma"]):
-            equity_curve.append(equity)
-            i += 1
-            continue
+        if invested and has_sma and price < float(sma):
+            option_value = 0.0
+            if active_option:
+                remaining_days = max(active_option["expiration_index"] - i, 0)
+                time_to_expiry = (
+                    remaining_days / DAYS_PER_YEAR if remaining_days > 0 else 0.0
+                )
+                option_value = call_price(
+                    price,
+                    active_option["strike"],
+                    time_to_expiry,
+                    RISK_FREE,
+                    active_option["sigma"],
+                )
+            cash = cash + shares * price - shares * option_value
+            shares = 0.0
+            active_option = None
+            invested = False
+            reentry_index = i + delay_days
+            just_exited = True
 
-        price = float(row["close"])
-        sma = float(row["sma"])
+        if not invested:
+            if not just_exited:
+                cash *= 1.0 + RISK_FREE / DAYS_PER_YEAR
+            if has_sma and i >= reentry_index and price > float(sma):
+                invested = True
+                shares = cash / price
+                cash = 0.0
 
-        if in_market and price < sma:
-            in_market = False
-            days_above = 0
-
-        if price > sma:
-            days_above += 1
-        else:
-            days_above = 0
-
-        if not in_market and days_above >= delay_days:
-            in_market = True
-
-        if in_market:
-            start_idx = i
-            end_idx = min(i + option_days, len(df) - 1)
-
-            S_start = float(df.iloc[start_idx]["close"])
-            S_end = float(df.iloc[end_idx]["close"])
-
-            hist = df["daily_ret"].iloc[max(1, start_idx - 20):start_idx].dropna()
+        if invested and not active_option:
+            expiration_index = min(i + option_days, len(df) - 1)
+            time_to_expiry = max(
+                (expiration_index - i) / DAYS_PER_YEAR, 1.0 / DAYS_PER_YEAR
+            )
+            hist = df["daily_ret"].iloc[max(1, i - 20):i].dropna()
             sigma = float(hist.std() * sqrt(DAYS_PER_YEAR)) if len(hist) >= 2 else 0.20
+            strike = find_strike(price, time_to_expiry, RISK_FREE, sigma, target_delta)
+            premium = call_price(price, strike, time_to_expiry, RISK_FREE, sigma)
+            cash += shares * premium
+            active_option = {
+                "strike": strike,
+                "sigma": sigma,
+                "expiration_index": expiration_index,
+            }
 
-            T = (end_idx - start_idx) / DAYS_PER_YEAR
-            if T <= 0:
-                T = 1.0 / DAYS_PER_YEAR
+        option_value = 0.0
+        if invested and active_option:
+            remaining_days = max(active_option["expiration_index"] - i, 0)
+            time_to_expiry = (
+                remaining_days / DAYS_PER_YEAR if remaining_days > 0 else 0.0
+            )
+            option_value = call_price(
+                price,
+                active_option["strike"],
+                time_to_expiry,
+                RISK_FREE,
+                active_option["sigma"],
+            )
 
-            K = find_strike(S_start, T, RISK_FREE, sigma, target_delta)
-            premium = call_price(S_start, K, T, RISK_FREE, sigma)
+        equity = cash + shares * price - shares * option_value if invested else cash
+        equity_curve.append(equity)
 
-            period_ret = (min(S_end, K) + premium) / S_start
-
-            for _ in range(start_idx, end_idx):
-                equity_curve.append(equity)
-
-            equity *= period_ret
-            equity_curve.append(equity)
-
-            i = end_idx + 1
-        else:
-            equity *= (1.0 + RISK_FREE / DAYS_PER_YEAR)
-            equity_curve.append(equity)
-            i += 1
-
-    out = df.iloc[:len(equity_curve)].copy()
+    out = df.iloc[: len(equity_curve)].copy()
     out["equity"] = equity_curve
     return out
 
