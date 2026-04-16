@@ -335,11 +335,15 @@
           <div class="metric-value" id="metric-suggested-term">--</div>
         </div>
         <div class="metric-card">
+          <div class="metric-label">Suggested Investment</div>
+          <div class="metric-value" id="metric-suggested-investment">--</div>
+        </div>
+        <div class="metric-card">
           <div class="metric-label">Expirations</div>
           <div class="metric-value" id="metric-expirations">--</div>
         </div>
         <div class="metric-card">
-          <div class="metric-label">Forced Sales</div>
+          <div class="metric-label">Forced Buybacks</div>
           <div class="metric-value" id="metric-forced-sales">--</div>
         </div>
         <div class="metric-card">
@@ -347,8 +351,8 @@
           <div class="metric-value" id="metric-callouts">--</div>
         </div>
         <div class="metric-card">
-          <div class="metric-label">Survival %</div>
-          <div class="metric-value" id="metric-survival-pct">--</div>
+          <div class="metric-label">Expired OTM</div>
+          <div class="metric-value" id="metric-expired-otm">--</div>
         </div>
         <div class="metric-card">
           <div class="metric-label">Calls By Term</div>
@@ -361,6 +365,10 @@
         <div class="metric-card">
           <div class="metric-label">% Time In Market</div>
           <div class="metric-value" id="metric-time-in-market">--</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Bracket Transitions</div>
+          <div class="metric-value small" id="metric-bracket-transitions">--</div>
         </div>
       </div>
       <div class="status" id="status">Loading data...</div>
@@ -392,18 +400,22 @@
     const metricMaxDdEl = document.getElementById("metric-maxdd");
     const metricRegimeEl = document.getElementById("metric-regime");
     const metricSuggestedTermEl = document.getElementById("metric-suggested-term");
+    const metricSuggestedInvestmentEl = document.getElementById("metric-suggested-investment");
     const metricExpirationsEl = document.getElementById("metric-expirations");
     const metricForcedSalesEl = document.getElementById("metric-forced-sales");
     const metricCalloutsEl = document.getElementById("metric-callouts");
-    const metricSurvivalPctEl = document.getElementById("metric-survival-pct");
+    const metricExpiredOtmEl = document.getElementById("metric-expired-otm");
     const metricTermBreakdownEl = document.getElementById("metric-term-breakdown");
     const metricCallLayerPnlEl = document.getElementById("metric-call-layer-pnl");
     const metricTimeInMarketEl = document.getElementById("metric-time-in-market");
+    const metricBracketTransitionsEl = document.getElementById("metric-bracket-transitions");
     const DEFAULT_SMA_WINDOW = 120;
     const DEFAULT_DELAY_DAYS = 10;
     const DEFAULT_DELTA = 0.20;
     const DEFAULT_SURVIVAL_THRESHOLD = 0.50;
-    const STARTING_EQUITY = 1000;
+    const DEFAULT_BUCKETS = 2;
+    const STARTING_EQUITY = 10000;
+    const QCHART_START_INDEX = 300;
     const CASH_RATE = 0.04;
     const DAYS_PER_YEAR = 252;
     let chart;
@@ -485,6 +497,11 @@
       return parseIntParam(["DELAY", "delay", "delay_days", "delayDays"], DEFAULT_DELAY_DAYS, 0);
     }
 
+    function getBuckets() {
+      const parsed = parseIntParam(["BUCKETS", "buckets"], DEFAULT_BUCKETS, 2);
+      return Math.min(10, Math.max(2, parsed));
+    }
+
     function getDelta() {
       return parseFloatParam(["DELTA", "delta"], DEFAULT_DELTA, 0, 0.99);
     }
@@ -546,6 +563,28 @@
         }
       }
       return sma;
+    }
+
+    function computeCloseStd(points, windowSize) {
+      const stdSeries = new Array(points.length).fill(null);
+      let sum = 0;
+      let sumSquares = 0;
+      for (let i = 0; i < points.length; i += 1) {
+        const value = points[i].close;
+        sum += value;
+        sumSquares += value * value;
+        if (i >= windowSize) {
+          const oldValue = points[i - windowSize].close;
+          sum -= oldValue;
+          sumSquares -= oldValue * oldValue;
+        }
+        if (i >= windowSize - 1) {
+          const mean = sum / windowSize;
+          const variance = Math.max(0, (sumSquares / windowSize) - (mean * mean));
+          stdSeries[i] = Math.sqrt(variance);
+        }
+      }
+      return stdSeries;
     }
 
     function erfApprox(x) {
@@ -674,11 +713,139 @@
       return probability;
     }
 
-    function chooseSuggestedTerm(points, smaSeries, index, targetSurvival = DEFAULT_SURVIVAL_THRESHOLD) {
-      if (getDelta() <= 0) {
+    function solveLinearSystem3x3(matrix, vector) {
+      const a = matrix.map((row) => row.slice());
+      const b = vector.slice();
+      for (let pivot = 0; pivot < 3; pivot += 1) {
+        let maxRow = pivot;
+        for (let row = pivot + 1; row < 3; row += 1) {
+          if (Math.abs(a[row][pivot]) > Math.abs(a[maxRow][pivot])) {
+            maxRow = row;
+          }
+        }
+        if (Math.abs(a[maxRow][pivot]) < 1e-12) {
+          return null;
+        }
+        if (maxRow !== pivot) {
+          [a[pivot], a[maxRow]] = [a[maxRow], a[pivot]];
+          [b[pivot], b[maxRow]] = [b[maxRow], b[pivot]];
+        }
+        const pivotValue = a[pivot][pivot];
+        for (let col = pivot; col < 3; col += 1) {
+          a[pivot][col] /= pivotValue;
+        }
+        b[pivot] /= pivotValue;
+        for (let row = 0; row < 3; row += 1) {
+          if (row === pivot) {
+            continue;
+          }
+          const factor = a[row][pivot];
+          for (let col = pivot; col < 3; col += 1) {
+            a[row][col] -= factor * a[pivot][col];
+          }
+          b[row] -= factor * b[pivot];
+        }
+      }
+      return b;
+    }
+
+    function fitQuadraticCalibration(samples) {
+      if (!samples || samples.length < 12) {
+        return null;
+      }
+      let n = 0;
+      let sumX = 0;
+      let sumX2 = 0;
+      let sumX3 = 0;
+      let sumX4 = 0;
+      let sumY = 0;
+      let sumXY = 0;
+      let sumX2Y = 0;
+      for (const sample of samples) {
+        const x = sample.raw;
+        const y = sample.outcome;
+        const x2 = x * x;
+        n += 1;
+        sumX += x;
+        sumX2 += x2;
+        sumX3 += x2 * x;
+        sumX4 += x2 * x2;
+        sumY += y;
+        sumXY += x * y;
+        sumX2Y += x2 * y;
+      }
+      const coeffs = solveLinearSystem3x3(
+        [
+          [n, sumX, sumX2],
+          [sumX, sumX2, sumX3],
+          [sumX2, sumX3, sumX4]
+        ],
+        [sumY, sumXY, sumX2Y]
+      );
+      if (!coeffs || coeffs.some((value) => !Number.isFinite(value))) {
+        return null;
+      }
+      return {
+        intercept: coeffs[0],
+        linear: coeffs[1],
+        quadratic: coeffs[2],
+        sampleCount: n
+      };
+    }
+
+    function calibratedProbability(model, rawValue) {
+      if (!model) {
+        return Math.max(0, Math.min(1, rawValue));
+      }
+      const x = Math.max(0, Math.min(1, rawValue));
+      const fitted = model.intercept + (model.linear * x) + (model.quadratic * x * x);
+      return Math.max(0, Math.min(1, fitted));
+    }
+
+    function buildSurvivalCalibration(points, smaSeries, delta) {
+      if (!(delta > 0)) {
+        return null;
+      }
+      const models = {};
+      for (const termDays of [20, 15, 10, 5]) {
+        const samples = [];
+        for (let index = 0; index + termDays < points.length; index += 1) {
+          const sma = smaSeries[index];
+          const price = points[index].close;
+          if (sma === null || !(price > sma)) {
+            continue;
+          }
+          const sigma = estimateSigma(points, index);
+          const drift = estimateDrift(points, index);
+          const rawSurvival = 1 - forcedSaleProbability(price, sma, sigma, drift, termDays);
+          const expirationIndex = Math.min(index + termDays, points.length - 1);
+          const timeToExpiry = Math.max((expirationIndex - index) / DAYS_PER_YEAR, 1 / DAYS_PER_YEAR);
+          const strike = findStrike(price, timeToExpiry, CASH_RATE, sigma, delta);
+          let forcedBuyback = false;
+          for (let future = index + 1; future < expirationIndex; future += 1) {
+            const futureSma = smaSeries[future];
+            if (futureSma !== null && points[future].close < futureSma) {
+              forcedBuyback = true;
+              break;
+            }
+          }
+          const expiredOtm = !forcedBuyback && points[expirationIndex].close <= strike;
+          samples.push({
+            raw: rawSurvival,
+            outcome: expiredOtm ? 1 : 0
+          });
+        }
+        models[termDays] = fitQuadraticCalibration(samples);
+      }
+      return models;
+    }
+
+    function chooseSuggestedTerm(points, smaSeries, index, targetSurvival = DEFAULT_SURVIVAL_THRESHOLD, delta = DEFAULT_DELTA, calibration = null) {
+      if (!(delta > 0)) {
         return {
           termDays: 0,
-          estSurvival: 0
+          estSurvival: 0,
+          rawSurvival: 0
         };
       }
 
@@ -688,32 +855,37 @@
       if (sma === null) {
         return {
           termDays: 20,
-          estSurvival: 1
+          estSurvival: 1,
+          rawSurvival: 1
         };
       }
 
       if (!(price > sma)) {
         return {
           termDays: 0,
-          estSurvival: 0
+          estSurvival: 0,
+          rawSurvival: 0
         };
       }
 
       const sigma = estimateSigma(points, index);
       const drift = estimateDrift(points, index);
       for (const termDays of [20, 15, 10, 5]) {
-        const survival = 1 - forcedSaleProbability(price, sma, sigma, drift, termDays);
+        const rawSurvival = 1 - forcedSaleProbability(price, sma, sigma, drift, termDays);
+        const survival = calibratedProbability(calibration ? calibration[termDays] : null, rawSurvival);
         if (survival >= targetSurvival) {
           return {
             termDays,
-            estSurvival: survival
+            estSurvival: survival,
+            rawSurvival
           };
         }
       }
 
       return {
         termDays: 0,
-        estSurvival: 0
+        estSurvival: 0,
+        rawSurvival: 0
       };
     }
 
@@ -726,8 +898,72 @@
       return callPrice(spot, activeOption.strike, timeToExpiry, CASH_RATE, activeOption.sigma);
     }
 
+    function formatInvestmentBucket(fraction) {
+      if (fraction <= 0) {
+        return "All Cash";
+      }
+      return Math.round(fraction * 100) + "%";
+    }
+
+    function formatHoldingBucket(fraction) {
+      if (fraction <= 0) {
+        return "holding at all cash";
+      }
+      return "holding at " + Math.round(fraction * 100) + "%";
+    }
+
+    function transitionBucketKey(fraction) {
+      if (fraction <= 0) {
+        return "0%";
+      }
+      return Math.round(fraction * 100) + "%";
+    }
+
+    function bucketFractions(bucketCount) {
+      if (bucketCount <= 2) {
+        return [0, 1];
+      }
+      const fractions = [];
+      for (let i = 0; i < bucketCount; i += 1) {
+        fractions.push(i / (bucketCount - 1));
+      }
+      return fractions;
+    }
+
+    function quantizeFraction(fraction, buckets) {
+      let best = buckets[0];
+      let bestError = Number.POSITIVE_INFINITY;
+      for (const bucket of buckets) {
+        const error = Math.abs(bucket - fraction);
+        if (error < bestError) {
+          bestError = error;
+          best = bucket;
+        }
+      }
+      return best;
+    }
+
+    function targetFractionLinear(price, sma, stdDev) {
+      if (sma === null) {
+        return 1;
+      }
+      if (stdDev === null || stdDev <= 1e-12) {
+        return price >= sma ? 1 : 0;
+      }
+      const low = sma - stdDev;
+      const high = sma + stdDev;
+      if (price <= low) {
+        return 0;
+      }
+      if (price >= high) {
+        return 1;
+      }
+      return (price - low) / (high - low);
+    }
+
     function simulateStrategy(points, config) {
       const smaSeries = computeSma(points, config.smaWindow);
+      const survivalCalibration = buildSurvivalCalibration(points, smaSeries, config.delta);
       let invested = true;
       let shares = STARTING_EQUITY / points[0].close;
       let cash = 0;
@@ -739,16 +975,27 @@
       let expirations = 0;
       let forcedSales = 0;
       let callouts = 0;
+      let expiredOtm = 0;
       let calloutLossDollars = 0;
       let callSalesDollars = 0;
       let forcedPurchaseDollars = 0;
       let investedDays = 0;
+      let currentInvestmentLabel = "100%";
+      let previousInvestedState = null;
       const termCounts = {
         0: 0,
         5: 0,
         10: 0,
         15: 0,
         20: 0
+      };
+      const transitionCounts = {
+        "0%": 0,
+        "20%": 0,
+        "40%": 0,
+        "60%": 0,
+        "80%": 0,
+        "100%": 0
       };
 
       for (let i = 0; i < points.length; i += 1) {
@@ -761,6 +1008,8 @@
           if (price > activeOption.strike) {
             callouts += 1;
             calloutLossDollars += shares * (price - activeOption.strike);
+          } else {
+            expiredOtm += 1;
           }
           const settledEquity = cash + shares * price - shares * Math.max(0, price - activeOption.strike);
           shares = settledEquity / price;
@@ -798,8 +1047,8 @@
 
         if (invested && !activeOption) {
           const suggestion = config.delta <= 0
-            ? { termDays: 0, estSurvival: 0 }
-            : chooseSuggestedTerm(points, smaSeries, i, config.survivalThreshold);
+            ? { termDays: 0, estSurvival: 0, rawSurvival: 0 }
+            : chooseSuggestedTerm(points, smaSeries, i, config.survivalThreshold, config.delta, survivalCalibration);
           termCounts[suggestion.termDays] += 1;
           if (suggestion.termDays > 0) {
             const expirationIndex = Math.min(i + suggestion.termDays, points.length - 1);
@@ -820,25 +1069,188 @@
 
         const optionValue = invested ? optionMarketValue(activeOption, price, i) : 0;
         const equity = invested ? cash + shares * price - shares * optionValue : cash;
+        if (previousInvestedState !== null && invested !== previousInvestedState) {
+          transitionCounts[invested ? "100%" : "0%"] += 1;
+        }
+        previousInvestedState = invested;
         if (invested) {
           investedDays += 1;
         }
         equitySeries.push(equity);
       }
 
+      const latestIndex = points.length - 1;
+      const latestSma = latestIndex >= 0 ? smaSeries[latestIndex] : null;
+      const latestPrice = latestIndex >= 0 ? points[latestIndex].close : 0;
+      if (!invested && latestSma !== null && latestPrice > latestSma && latestIndex < reentryIndex) {
+        currentInvestmentLabel = "holding at all cash";
+      } else {
+        currentInvestmentLabel = invested ? "100%" : "All Cash";
+      }
+
       return {
+        startingEquity: STARTING_EQUITY,
         smaSeries,
         equitySeries,
         currentRegime,
+        currentInvestmentLabel,
+        survivalCalibration,
         sales,
         expirations,
         forcedSales,
         callouts,
+        expiredOtm,
         calloutLossDollars,
-        realizedSurvival: sales > 0 ? (expirations / sales) : 0,
+        expiredOtmPct: sales > 0 ? (expiredOtm / sales) : 0,
         termCounts,
+        transitionCounts,
         callLayerPnl: callSalesDollars - forcedPurchaseDollars,
         timeInMarket: points.length > 0 ? (investedDays / points.length) : 0
+      };
+    }
+
+    function simulateQuantizedStrategy(points, config) {
+      const smaSeries = computeSma(points, config.smaWindow);
+      const survivalCalibration = buildSurvivalCalibration(points, smaSeries, config.delta);
+      const stdSeries = computeCloseStd(points, config.smaWindow);
+      const buckets = bucketFractions(config.buckets);
+      const equitySeries = new Array(points.length).fill(null);
+      let cash = STARTING_EQUITY;
+      let shares = 0;
+      let activeOption = null;
+      let actualFraction = null;
+      let cooldownUntil = -1;
+      let sales = 0;
+      let expirations = 0;
+      let forcedSales = 0;
+      let callouts = 0;
+      let expiredOtm = 0;
+      let calloutLossDollars = 0;
+      let callSalesDollars = 0;
+      let forcedPurchaseDollars = 0;
+      let allocatedFractionDays = 0;
+      let currentRegime = "All Cash";
+      let currentInvestmentLabel = "All Cash";
+      let previousActualFraction = null;
+      const termCounts = {
+        0: 0,
+        5: 0,
+        10: 0,
+        15: 0,
+        20: 0
+      };
+      const transitionCounts = Object.fromEntries(buckets.map((bucket) => [transitionBucketKey(bucket), 0]));
+
+      for (let i = QCHART_START_INDEX; i < points.length; i += 1) {
+        const price = points[i].close;
+
+        if (activeOption && activeOption.expirationIndex === i) {
+          const itmShares = activeOption.contracts * 100;
+          if (price > activeOption.strike) {
+            callouts += activeOption.contracts;
+            calloutLossDollars += itmShares * (price - activeOption.strike);
+          } else {
+            expiredOtm += activeOption.contracts;
+          }
+          cash -= itmShares * Math.max(0, price - activeOption.strike);
+          expirations += activeOption.contracts;
+          activeOption = null;
+        }
+
+        const rawFraction = quantizeFraction(targetFractionLinear(price, smaSeries[i], stdSeries[i]), buckets);
+        if (actualFraction === null) {
+          actualFraction = rawFraction;
+        } else if (rawFraction < actualFraction) {
+          actualFraction = rawFraction;
+          cooldownUntil = i + config.delayDays;
+        } else if (rawFraction > actualFraction && i >= cooldownUntil) {
+          actualFraction = rawFraction;
+        }
+
+        if (rawFraction > actualFraction && i < cooldownUntil) {
+          currentInvestmentLabel = formatHoldingBucket(actualFraction);
+        } else {
+          currentInvestmentLabel = formatInvestmentBucket(actualFraction);
+        }
+        if (previousActualFraction !== null && actualFraction !== previousActualFraction) {
+          transitionCounts[transitionBucketKey(actualFraction)] += 1;
+        }
+        previousActualFraction = actualFraction;
+        currentRegime = actualFraction > 0 ? (Math.round(actualFraction * 100) + "% invested") : "All Cash";
+
+        const currentOptionValue = activeOption ? optionMarketValue(activeOption, price, i) : 0;
+        const currentOptionLiability = activeOption ? (activeOption.contracts * 100 * currentOptionValue) : 0;
+        const equityBefore = cash + shares * price - currentOptionLiability;
+        const targetShares = price > 0 ? ((equityBefore * actualFraction) / price) : 0;
+        const shareDelta = targetShares - shares;
+        cash -= shareDelta * price;
+        shares = targetShares;
+
+        if (activeOption) {
+          const optionValue = optionMarketValue(activeOption, price, i);
+          const maxContracts = Math.floor(shares / 100);
+          if (activeOption.contracts > maxContracts) {
+            const reducedContracts = activeOption.contracts - maxContracts;
+            forcedSales += reducedContracts;
+            forcedPurchaseDollars += reducedContracts * 100 * optionValue;
+            cash -= reducedContracts * 100 * optionValue;
+            activeOption.contracts = maxContracts;
+            if (activeOption.contracts <= 0) {
+              activeOption = null;
+            }
+          }
+        }
+
+        if (cash > 0) {
+          cash *= 1 + CASH_RATE / DAYS_PER_YEAR;
+        }
+
+        const coveredContracts = Math.floor(shares / 100);
+        if (!activeOption) {
+          const termDays = config.delta <= 0 ? 0 : chooseSuggestedTerm(points, smaSeries, i, config.survivalThreshold, config.delta, survivalCalibration).termDays;
+          termCounts[termDays] += coveredContracts > 0 ? coveredContracts : 1;
+          if (termDays > 0 && coveredContracts > 0) {
+            const expirationIndex = Math.min(i + termDays, points.length - 1);
+            const timeToExpiry = Math.max((expirationIndex - i) / DAYS_PER_YEAR, 1 / DAYS_PER_YEAR);
+            const sigma = estimateSigma(points, i);
+            const strike = findStrike(price, timeToExpiry, CASH_RATE, sigma, config.delta);
+            const premium = callPrice(price, strike, timeToExpiry, CASH_RATE, sigma);
+            cash += coveredContracts * 100 * premium;
+            callSalesDollars += coveredContracts * 100 * premium;
+            sales += coveredContracts;
+            activeOption = {
+              contracts: coveredContracts,
+              strike,
+              sigma,
+              expirationIndex
+            };
+          }
+        }
+
+        const liveOptionValue = activeOption ? optionMarketValue(activeOption, price, i) : 0;
+        const liveLiability = activeOption ? (activeOption.contracts * 100 * liveOptionValue) : 0;
+        equitySeries[i] = cash + shares * price - liveLiability;
+        allocatedFractionDays += actualFraction;
+      }
+
+      return {
+        startingEquity: STARTING_EQUITY,
+        smaSeries,
+        equitySeries,
+        currentRegime,
+        currentInvestmentLabel,
+        survivalCalibration,
+        sales,
+        expirations,
+        forcedSales,
+        callouts,
+        expiredOtm,
+        calloutLossDollars,
+        expiredOtmPct: sales > 0 ? (expiredOtm / sales) : 0,
+        termCounts,
+        transitionCounts,
+        callLayerPnl: callSalesDollars - forcedPurchaseDollars,
+        timeInMarket: points.length > QCHART_START_INDEX ? (allocatedFractionDays / (points.length - QCHART_START_INDEX)) : 0
       };
     }
 
@@ -850,6 +1262,13 @@
         "5d: " + termCounts[5],
         "No sale: " + termCounts[0]
       ].join(" | ");
+    }
+
+    function formatBracketTransitions(transitionCounts, bucketCount) {
+      return bucketFractions(bucketCount)
+        .map((bucket) => transitionBucketKey(bucket))
+        .map((key) => key + ": " + (transitionCounts[key] || 0))
+        .join(" | ");
     }
 
     function formatDate(date) {
@@ -872,13 +1291,14 @@
       return (value * 100).toFixed(2) + "%";
     }
 
-    function computeStats(equitySeries) {
-      const finalEquity = equitySeries[equitySeries.length - 1];
-      const years = Math.max((equitySeries.length - 1) / DAYS_PER_YEAR, 1 / DAYS_PER_YEAR);
-      const cagr = Math.pow(finalEquity / STARTING_EQUITY, 1 / years) - 1;
-      let peak = equitySeries[0];
+    function computeStats(equitySeries, startingEquity) {
+      const values = equitySeries.filter((value) => value !== null);
+      const finalEquity = values[values.length - 1];
+      const years = Math.max((values.length - 1) / DAYS_PER_YEAR, 1 / DAYS_PER_YEAR);
+      const cagr = Math.pow(finalEquity / startingEquity, 1 / years) - 1;
+      let peak = values[0];
       let maxDrawdown = 0;
-      for (const value of equitySeries) {
+      for (const value of values) {
         if (value > peak) {
           peak = value;
         }
@@ -966,7 +1386,7 @@
       const labels = points.map((point) => point.date);
       const prices = points.map((point) => point.close);
       const maSeries = smaSeries.map((value) => (value ? Number(value.toFixed(2)) : null));
-      const roundedEquity = equitySeries.map((value) => Number(value.toFixed(2)));
+      const roundedEquity = equitySeries.map((value) => (value === null ? null : Number(value.toFixed(2))));
 
       if (chart) {
         chart.destroy();
@@ -1101,8 +1521,10 @@
           throw new Error("Not enough data for SMA " + config.smaWindow + ".");
         }
         currentDataSource = source;
-        const simulation = simulateStrategy(points, config);
-        const stats = computeStats(simulation.equitySeries);
+        const simulation = config.buckets > 2
+          ? simulateQuantizedStrategy(points, config)
+          : simulateStrategy(points, config);
+        const stats = computeStats(simulation.equitySeries, simulation.startingEquity);
         latestPoints = points;
         latestSmaSeries = simulation.smaSeries;
         latestEquitySeries = simulation.equitySeries;
@@ -1110,8 +1532,8 @@
 
         const latest = points[points.length - 1];
         const suggestion = config.delta <= 0
-          ? { termDays: 0, estSurvival: 0 }
-          : chooseSuggestedTerm(points, simulation.smaSeries, points.length - 1, config.survivalThreshold);
+          ? { termDays: 0, estSurvival: 0, rawSurvival: 0 }
+          : chooseSuggestedTerm(points, simulation.smaSeries, points.length - 1, config.survivalThreshold, config.delta, simulation.survivalCalibration);
         latestEl.textContent = "Latest close: $" + latest.close.toFixed(2) + " (" + formatDate(latest.date) + ")";
         dataSourceEl.textContent = currentDataSource || ("Daily prices (" + ticker + ")");
         metricFinalEl.textContent = formatMoney(stats.finalEquity);
@@ -1119,13 +1541,15 @@
         metricMaxDdEl.textContent = formatPercent(stats.maxDrawdown);
         metricRegimeEl.textContent = simulation.currentRegime;
         metricSuggestedTermEl.textContent = suggestion.termDays > 0 ? (String(suggestion.termDays) + " days") : "No sale";
+        metricSuggestedInvestmentEl.textContent = simulation.currentInvestmentLabel;
         metricExpirationsEl.textContent = String(simulation.expirations);
         metricForcedSalesEl.textContent = String(simulation.forcedSales);
         metricCalloutsEl.textContent = String(simulation.callouts) + " | " + formatMoney(simulation.calloutLossDollars);
-        metricSurvivalPctEl.textContent = formatPercent(simulation.realizedSurvival);
+        metricExpiredOtmEl.textContent = String(simulation.expiredOtm) + " | " + formatPercent(simulation.expiredOtmPct);
         metricTermBreakdownEl.textContent = formatTermBreakdown(simulation.termCounts);
         metricCallLayerPnlEl.textContent = formatMoney(simulation.callLayerPnl);
         metricTimeInMarketEl.textContent = formatPercent(simulation.timeInMarket);
+        metricBracketTransitionsEl.textContent = simulation.transitionCounts ? formatBracketTransitions(simulation.transitionCounts, config.buckets) : "--";
       } catch (error) {
         console.error(error);
         currentDataSource = "";
@@ -1137,23 +1561,32 @@
         metricMaxDdEl.textContent = "--";
         metricRegimeEl.textContent = "--";
         metricSuggestedTermEl.textContent = "--";
+        metricSuggestedInvestmentEl.textContent = "--";
         metricExpirationsEl.textContent = "--";
         metricForcedSalesEl.textContent = "--";
         metricCalloutsEl.textContent = "--";
-        metricSurvivalPctEl.textContent = "--";
+        metricExpiredOtmEl.textContent = "--";
         metricTermBreakdownEl.textContent = "--";
         metricCallLayerPnlEl.textContent = "--";
         metricTimeInMarketEl.textContent = "--";
+        metricBracketTransitionsEl.textContent = "--";
         setStatus("Could not load data for " + ticker + ".", true);
       }
     }
 
     function updateCopy(ticker, config) {
       const symbol = resolveSymbol(ticker);
-      document.title = ticker + " covered call backtest";
-      eyebrowEl.textContent = ticker + " covered call backtest";
-      headlineEl.textContent = ticker + " strategy with " + config.smaWindow + "-day MA";
-      subheadEl.textContent = "Full-history backtest with " + formatPercent(config.delta) + " delta calls, adaptive 20/15/10/5-day terms driven by a " + formatPercent(config.survivalThreshold) + " survival threshold, a " + config.delayDays + "-day cooldown after MA breakdowns, and 4% cash yield while out of market.";
+      if (config.buckets > 2) {
+        document.title = ticker + " quantized covered call backtest";
+        eyebrowEl.textContent = ticker + " quantized covered call backtest";
+        headlineEl.textContent = ticker + " quantized strategy with " + config.smaWindow + "-day MA";
+        subheadEl.textContent = "Quantized 0/20/40/60/80/100% allocation using an MA +/- 1 standard-deviation band, with any decrease applied immediately and any increase delayed by " + config.delayDays + " trading days. Covered calls are sold only against fully covered 100-share lots. Simulation starts 300 trading days in with $10,000. Survival is empirically calibrated to historical expired-OTM outcomes.";
+      } else {
+        document.title = ticker + " covered call backtest";
+        eyebrowEl.textContent = ticker + " covered call backtest";
+        headlineEl.textContent = ticker + " strategy with " + config.smaWindow + "-day MA";
+        subheadEl.textContent = "Full-history backtest with " + formatPercent(config.delta) + " delta calls, adaptive 20/15/10/5-day terms driven by a " + formatPercent(config.survivalThreshold) + " empirically calibrated survival threshold, a " + config.delayDays + "-day cooldown after MA breakdowns, and 4% cash yield while out of market.";
+      }
       dataSourceEl.textContent = currentDataSource || ("Daily prices (" + symbol + ")");
       smaLegendLabelEl.textContent = "SMA " + config.smaWindow;
       tickerInput.value = ticker;
@@ -1170,7 +1603,8 @@
         "?SMA=" + encodeURIComponent(config.smaWindow) +
         "&DELTA=" + encodeURIComponent(config.delta.toFixed(2)) +
         "&DELAY=" + encodeURIComponent(config.delayDays) +
-        "&SURVIVAL_PROB=" + encodeURIComponent(config.survivalThreshold.toFixed(2))
+        "&SURVIVAL_PROB=" + encodeURIComponent(config.survivalThreshold.toFixed(2)) +
+        "&BUCKETS=" + encodeURIComponent(config.buckets)
       );
     }
 
@@ -1179,7 +1613,8 @@
         smaWindow: Math.max(2, Number.parseInt(smaInput.value || String(DEFAULT_SMA_WINDOW), 10)),
         delta: Math.min(0.99, Math.max(0, Number.parseFloat(deltaInput.value || String(DEFAULT_DELTA)))),
         delayDays: Math.max(0, Number.parseInt(delayInput.value || String(DEFAULT_DELAY_DAYS), 10)),
-        survivalThreshold: Math.min(0.99, Math.max(0.01, Number.parseFloat(optionDaysInput.value || String(DEFAULT_SURVIVAL_THRESHOLD))))
+        survivalThreshold: Math.min(0.99, Math.max(0.01, Number.parseFloat(optionDaysInput.value || String(DEFAULT_SURVIVAL_THRESHOLD)))),
+        buckets: getBuckets()
       };
     }
 
@@ -1201,7 +1636,8 @@
       smaWindow: getSmaWindow(),
       delta: getDelta(),
       delayDays: getDelayDays(),
-      survivalThreshold: getSurvivalThreshold()
+      survivalThreshold: getSurvivalThreshold(),
+      buckets: getBuckets()
     };
     updateRangeButtons();
     updateCopy(ticker, config);
