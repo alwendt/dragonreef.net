@@ -1,0 +1,70 @@
+date 20260112
+  synthetic funding 125.96 before VOO buy -> cash 125.96
+  buy VOO 0.197 for 125.96 -> cash 0 shares 0.197
+  synthetic funding 49873.98 before VOO buy -> cash 49873.98
+  buy VOO 78 for 49873.98 -> cash 0 shares 78.197
+date 20260116
+  synthetic funding 229.91 before VOO buy -> cash 229.91
+  buy VOO 0.362 for 229.91 -> cash 0 shares 78.559
+  synthetic funding 24769.88 before VOO buy -> cash 24769.88
+  buy VOO 39 for 24769.88 -> cash 0 shares 117.559
+date 20260205
+  option premium 188.33 [YOU SOLD OPENING TRANSACTION CALL (VOO) VANGUARD INDEX FUNDSFEB 06 26 $632.5 (100 SHS) (Cash)] -> cash 188.33
+date 20260209
+  option premium 379.33 [YOU SOLD OPENING TRANSACTION PUT (VOO) VANGUARD INDEX FUNDSFEB 13 26 $632.5 (100 SHS) (Cash)] -> cash 567.66
+  sell VOO 100 for 63250 -> cash 63817.66 shares 17.559
+date 20260217
+  buy VOO 100 for 63250 -> cash 567.66 shares 117.559
+date 20260218
+  option premium 359.33 [YOU SOLD OPENING TRANSACTION CALL (VOO) VANGUARD INDEX FUNDSFEB 20 26 $630 (100 SHS) (Cash)] -> cash 926.99
+date 20260223
+  option premium 389.33 [YOU SOLD OPENING TRANSACTION PUT (VOO) VANGUARD INDEX FUNDSFEB 27 26 $625 (100 SHS) (Cash)] -> cash 1316.32
+  sell VOO 100 for 63000 -> cash 64316.32 shares 17.559
+date 20260225
+  option premium 865.33 [YOU SOLD OPENING TRANSACTION CALL (VOO) VANGUARD INDEX FUNDSMAR 20 26 $640 (100 SHS) (Cash)] -> cash 65181.65
+  buyback option 75.67 [YOU BOUGHT CLOSING TRANSACTION PUT (VOO) VANGUARD INDEX FUNDSFEB 27 26 $625 (100 SHS) (Cash)] -> cash 65105.98
+  buy VOO 0.441 for 281.07 -> cash 64824.91 shares 18
+  buy VOO 82 for 52262.7 -> cash 12562.21 shares 100
+date 20260226
+  option premium 234.33 [YOU SOLD OPENING TRANSACTION CALL (VOO) VANGUARD INDEX FUNDSFEB 27 26 $632.5 (100 SHS) (Cash)] -> cash 12796.54
+  buyback option 576.67 [YOU BOUGHT CLOSING TRANSACTION CALL (VOO) VANGUARD INDEX FUNDSMAR 20 26 $640 (100 SHS) (Cash)] -> cash 12219.87
+date 20260227
+  option premium 468.33 [YOU SOLD OPENING TRANSACTION CALL (VOO) VANGUARD INDEX FUNDSMAR 06 26 $632.5 (100 SHS) (Cash)] -> cash 12688.2
+  buyback option 11.02 [YOU BOUGHT CLOSING TRANSACTION CALL (VOO) VANGUARD INDEX FUNDSFEB 27 26 $632.5 (100 SHS) (Cash)] -> cash 12677.18
+date 20260306
+  option premium 414.33 [YOU SOLD OPENING TRANSACTION CALL (VOO) VANGUARD INDEX FUNDSMAR 13 26 $627.5 (100 SHS) (Cash)] -> cash 13091.51
+  buyback option 5.02 [YOU BOUGHT CLOSING TRANSACTION CALL (VOO) VANGUARD INDEX FUNDSMAR 06 26 $632.5 (100 SHS) (Cash)] -> cash 13086.49
+date 20260313
+  buyback option 3.02 [YOU BOUGHT CLOSING TRANSACTION CALL (VOO) VANGUARD INDEX FUNDSMAR 13 26 $627.5 (100 SHS) (Cash)] -> cash 13083.47
+date 20260316
+  option premium 191.33 [YOU SOLD OPENING TRANSACTION CALL (VOO) VANGUARD INDEX FUNDSMAR 20 26 $625 (100 SHS) (Cash)] -> cash 13274.8
+date 20260319
+  sell VOO 100 for 60408.5 -> cash 73683.3 shares 0
+  buyback option 5.02 [YOU BOUGHT CLOSING TRANSACTION CALL (VOO) VANGUARD INDEX FUNDSMAR 20 26 $625 (100 SHS) (Cash)] -> cash 73678.28
+date 20260320
+  buy VOO 0.1 for 60.19 -> cash 73618.09 shares 0.1
+date 20260406
+  buy VOOCASH 26361.98 [synthetic funding to match SGOV cash sleeve] -> cash 99980.07
+date 20260408
+  buy VOOCASH 22.84 [synthetic SGOV carry into VOOCASH] -> cash 100002.91
+  buy VOO 0.006 for 3.73 -> cash 99999.18 shares 0.106
+  buy VOO 61 for 37896.25 -> cash 62102.93 shares 61.106
+  buy VOO 100 for 62056 -> cash 46.93 shares 161.106
+date 20260410
+  option premium 149.33 [YOU SOLD OPENING TRANSACTION CALL (VOO) VANGUARD INDEX FUNDS APR 17 26 $635 (100 SHS) (Cash)] -> cash 196.26
+date 20260413
+  buy VOO 0.24 for 149.47 -> cash 46.79 shares 161.346
+date 20260420
+  option premium 219.33 [YOU SOLD OPENING TRANSACTION CALL (VOO) VANGUARD INDEX FUNDS MAY 01 26 $665 (100 SHS) (Cash)] -> cash 266.12
+  sell VOO 100 for 63498.69 -> cash 63764.81 shares 61.346
+  buy VOO 0.336 for 219.08 -> cash 63545.73 shares 61.682
+  buy VOO 0.413 for 269.22 -> cash 63276.51 shares 62.095
+  buy VOO 97 for 63229.45 -> cash 47.06 shares 159.095
+
+Final shares: 159.095
+Final cash: 47.06
+Latest close 2026-04-23: 651.26
+VOO market value: 103612.21
+Total strategy value: 103659.27
+SGOV shortfall funding inserted on 20260406: 26361.98
+SGOV carry inserted on 20260408: 22.84

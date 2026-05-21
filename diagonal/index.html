@@ -1,0 +1,800 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Put Diagonal Strategy</title>
+  <style>
+    :root {
+      --ink: #18202a;
+      --muted: #697582;
+      --line: #d8dee5;
+      --panel: #ffffff;
+      --page: #f3f6f8;
+      --accent: #0f766e;
+      --accent-2: #b45309;
+      --danger: #b42318;
+      --good: #147a3f;
+      --shadow: 0 12px 38px rgba(24, 32, 42, 0.10);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--ink);
+      background: var(--page);
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      padding: 24px;
+    }
+
+    .wrap {
+      max-width: 1240px;
+      margin: 0 auto;
+      display: grid;
+      gap: 16px;
+    }
+
+    header {
+      display: flex;
+      justify-content: space-between;
+      gap: 18px;
+      align-items: end;
+      border-bottom: 1px solid var(--line);
+      padding-bottom: 14px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 28px;
+      letter-spacing: 0;
+    }
+
+    .subhead {
+      margin: 6px 0 0;
+      color: var(--muted);
+      font-size: 14px;
+      max-width: 760px;
+      line-height: 1.4;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+      padding: 16px;
+    }
+
+    form.controls {
+      display: grid;
+      grid-template-columns: repeat(8, minmax(98px, 1fr));
+      gap: 10px;
+      align-items: end;
+    }
+
+    label {
+      display: grid;
+      gap: 4px;
+      font-size: 11px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      font-weight: 700;
+    }
+
+    input, select {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 8px 9px;
+      color: var(--ink);
+      background: #fff;
+      font: inherit;
+      font-size: 14px;
+      min-height: 36px;
+    }
+
+    button {
+      border: 0;
+      border-radius: 6px;
+      min-height: 36px;
+      padding: 8px 14px;
+      background: var(--ink);
+      color: white;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    button.secondary {
+      background: #fff;
+      color: var(--ink);
+      border: 1px solid var(--line);
+    }
+
+    .meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 18px;
+      color: var(--muted);
+      font-size: 13px;
+      margin-bottom: 12px;
+    }
+
+    .meta strong { color: var(--ink); }
+
+    .chart-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 310px;
+      gap: 16px;
+      align-items: start;
+    }
+
+    canvas {
+      width: 100% !important;
+      height: 520px !important;
+    }
+
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .metric {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 11px;
+      background: #fbfcfd;
+      min-height: 72px;
+    }
+
+    .metric-label {
+      font-size: 10px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-weight: 800;
+      margin-bottom: 5px;
+    }
+
+    .metric-value {
+      font-size: 20px;
+      font-weight: 800;
+    }
+
+    .metric-value.small {
+      font-size: 13px;
+      line-height: 1.35;
+      font-weight: 700;
+    }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 14px;
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .dot {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      margin-right: 6px;
+    }
+
+    .status {
+      color: var(--muted);
+      font-size: 13px;
+      margin-top: 10px;
+    }
+
+    .error { color: var(--danger); font-weight: 700; }
+    .good { color: var(--good); }
+    .bad { color: var(--danger); }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+
+    th, td {
+      text-align: right;
+      border-bottom: 1px solid var(--line);
+      padding: 7px 6px;
+      white-space: nowrap;
+    }
+
+    th:first-child, td:first-child { text-align: left; }
+    th { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; }
+
+    @media (max-width: 980px) {
+      form.controls { grid-template-columns: repeat(3, minmax(120px, 1fr)); }
+      .chart-grid { grid-template-columns: 1fr; }
+      .metrics { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    }
+
+    @media (max-width: 680px) {
+      body { padding: 14px; }
+      header { display: grid; }
+      form.controls { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      canvas { height: 380px !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div>
+        <h1>Put Diagonal Strategy</h1>
+        <p class="subhead">Backtests a cash-secured put diagonal: buy a longer-dated put for downside insurance, sell short-dated puts for income, settle weekly, and roll the insurance leg.</p>
+      </div>
+      <button class="secondary" id="refresh">Refresh Data</button>
+    </header>
+
+    <section class="panel">
+      <form class="controls" id="controls">
+        <label>Ticker <input id="ticker" value="F" autocomplete="off" spellcheck="false"></label>
+        <label>Contracts <input id="contracts" type="number" min="1" step="1" value="5"></label>
+        <label>Starting Cash <input id="cash" type="number" min="100" step="100" value="10000"></label>
+        <label>Short Put Delta <input id="short-delta" type="number" min="0.01" max="0.95" step="0.01" value="0.20"></label>
+        <label>Short DTE <input id="short-dte" type="number" min="1" max="60" step="1" value="5"></label>
+        <label>Long Put Delta <input id="long-delta" type="number" min="0.01" max="0.95" step="0.01" value="0.18"></label>
+        <label>Long DTE <input id="long-dte" type="number" min="20" max="504" step="1" value="126"></label>
+        <label>Roll Long At DTE <input id="roll-dte" type="number" min="0" max="90" step="1" value="5"></label>
+        <button type="submit">Run</button>
+      </form>
+    </section>
+
+    <section class="panel">
+      <div class="meta">
+        <div>Data: <strong id="data-source">chart-cache</strong></div>
+        <div>Latest close: <strong id="latest">--</strong></div>
+        <div>Model: <strong>Black-Scholes synthetic option marks</strong></div>
+      </div>
+      <div class="chart-grid">
+        <div>
+          <canvas id="chart"></canvas>
+          <div class="legend">
+            <span><span class="dot" style="background:#0f766e"></span>Equity</span>
+            <span><span class="dot" style="background:#334155"></span>Cash</span>
+            <span><span class="dot" style="background:#b45309"></span>Close</span>
+          </div>
+          <div class="status" id="status">Loading data...</div>
+        </div>
+        <div class="metrics">
+          <div class="metric"><div class="metric-label">Final Equity</div><div class="metric-value" id="m-final">--</div></div>
+          <div class="metric"><div class="metric-label">CAGR</div><div class="metric-value" id="m-cagr">--</div></div>
+          <div class="metric"><div class="metric-label">Max Drawdown</div><div class="metric-value" id="m-dd">--</div></div>
+          <div class="metric"><div class="metric-label">Premium Net</div><div class="metric-value" id="m-premium">--</div></div>
+          <div class="metric"><div class="metric-label">Short Puts Sold</div><div class="metric-value" id="m-shorts">--</div></div>
+          <div class="metric"><div class="metric-label">Short ITM</div><div class="metric-value" id="m-itm">--</div></div>
+          <div class="metric"><div class="metric-label">Long Rolls</div><div class="metric-value" id="m-rolls">--</div></div>
+          <div class="metric"><div class="metric-label">Insurance Events</div><div class="metric-value" id="m-insurance">--</div></div>
+          <div class="metric"><div class="metric-label">Current Structure</div><div class="metric-value small" id="m-structure">--</div></div>
+          <div class="metric"><div class="metric-label">Worst Equity</div><div class="metric-value" id="m-worst">--</div></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="meta"><div>Recent option events</div></div>
+      <table>
+        <thead><tr><th>Date</th><th>Event</th><th>Strike</th><th>Debit</th><th>Credit</th><th>Cash</th></tr></thead>
+        <tbody id="events"></tbody>
+      </table>
+    </section>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+  <script>
+    const DAYS_PER_YEAR = 252;
+    const RISK_FREE = 0.04;
+    let chart = null;
+
+    const els = {
+      form: document.getElementById("controls"),
+      refresh: document.getElementById("refresh"),
+      ticker: document.getElementById("ticker"),
+      contracts: document.getElementById("contracts"),
+      cash: document.getElementById("cash"),
+      shortDelta: document.getElementById("short-delta"),
+      shortDte: document.getElementById("short-dte"),
+      longDelta: document.getElementById("long-delta"),
+      longDte: document.getElementById("long-dte"),
+      rollDte: document.getElementById("roll-dte"),
+      status: document.getElementById("status"),
+      latest: document.getElementById("latest"),
+      dataSource: document.getElementById("data-source"),
+      events: document.getElementById("events"),
+      final: document.getElementById("m-final"),
+      cagr: document.getElementById("m-cagr"),
+      dd: document.getElementById("m-dd"),
+      premium: document.getElementById("m-premium"),
+      shorts: document.getElementById("m-shorts"),
+      itm: document.getElementById("m-itm"),
+      rolls: document.getElementById("m-rolls"),
+      insurance: document.getElementById("m-insurance"),
+      structure: document.getElementById("m-structure"),
+      worst: document.getElementById("m-worst")
+    };
+
+    function setStatus(text, isError = false) {
+      els.status.textContent = text;
+      els.status.className = isError ? "status error" : "status";
+    }
+
+    function fmtMoney(value) {
+      return Number.isFinite(value) ? value.toLocaleString(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 0 }) : "--";
+    }
+
+    function fmtPct(value) {
+      return Number.isFinite(value) ? (value * 100).toFixed(2) + "%" : "--";
+    }
+
+    function fmtDate(date) {
+      return date.toISOString().slice(0, 10);
+    }
+
+    function normalizeTicker(raw) {
+      const value = String(raw || "F").toUpperCase().trim().replace(/[^A-Z0-9.\-]/g, "");
+      return value || "F";
+    }
+
+    function getParam(name, fallback) {
+      const params = new URLSearchParams(window.location.search);
+      return params.get(name) || fallback;
+    }
+
+    function tickerFromPath() {
+      const parts = window.location.pathname.split("/").filter(Boolean);
+      const diagonalIndex = parts.indexOf("diagonal");
+      if (diagonalIndex === -1) {
+        return "";
+      }
+      const candidate = parts[diagonalIndex + 1];
+      if (!candidate || candidate.toLowerCase() === "index.html" || candidate.toLowerCase() === "index.jsp") {
+        return "";
+      }
+      return candidate;
+    }
+
+    function syncControlsFromUrl() {
+      els.ticker.value = normalizeTicker(getParam("t", getParam("ticker", tickerFromPath() || els.ticker.value)));
+      els.contracts.value = getParam("contracts", els.contracts.value);
+      els.cash.value = getParam("cash", getParam("starting_cash", els.cash.value));
+      els.shortDelta.value = getParam("short_delta", els.shortDelta.value);
+      els.shortDte.value = getParam("short_dte", els.shortDte.value);
+      els.longDelta.value = getParam("long_delta", els.longDelta.value);
+      els.longDte.value = getParam("long_dte", els.longDte.value);
+      els.rollDte.value = getParam("roll_dte", els.rollDte.value);
+    }
+
+    function configFromControls() {
+      return {
+        ticker: normalizeTicker(els.ticker.value),
+        contracts: Math.max(1, Math.floor(Number(els.contracts.value) || 1)),
+        startingCash: Math.max(100, Number(els.cash.value) || 10000),
+        shortDelta: clamp(Number(els.shortDelta.value) || 0.20, 0.01, 0.95),
+        shortDte: Math.max(1, Math.floor(Number(els.shortDte.value) || 5)),
+        longDelta: clamp(Number(els.longDelta.value) || 0.18, 0.01, 0.95),
+        longDte: Math.max(20, Math.floor(Number(els.longDte.value) || 126)),
+        rollDte: Math.max(0, Math.floor(Number(els.rollDte.value) || 5))
+      };
+    }
+
+    function clamp(value, min, max) {
+      return Math.max(min, Math.min(max, value));
+    }
+
+    function dataUrl(ticker) {
+      return "/cgi-bin/fetch_prices.csv?t=" + encodeURIComponent(ticker) + "&cb=" + Date.now();
+    }
+
+    async function loadPrices(ticker) {
+      const response = await fetch(dataUrl(ticker), { cache: "no-store" });
+      const text = await response.text();
+      if (!response.ok) {
+        throw new Error(text.trim() || "Price fetch failed");
+      }
+      els.dataSource.textContent = response.headers.get("x-data-source") || "chart-cache";
+      return parseCsv(text);
+    }
+
+    function parseCsv(text) {
+      const rows = [];
+      const lines = String(text || "").trim().split("\n");
+      for (let i = 1; i < lines.length; i += 1) {
+        const [date, open, high, low, close, volume] = lines[i].split(",");
+        const parts = (date || "").split("-");
+        if (parts.length !== 3) {
+          continue;
+        }
+        const point = {
+          date: new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2])),
+          open: Number(open),
+          high: Number(high),
+          low: Number(low),
+          close: Number(close),
+          volume: Number(volume || 0)
+        };
+        if (Number.isFinite(point.close) && point.close > 0) {
+          rows.push(point);
+        }
+      }
+      rows.sort((a, b) => a.date - b.date);
+      return rows;
+    }
+
+    function erfApprox(x) {
+      const sign = x < 0 ? -1 : 1;
+      const absX = Math.abs(x);
+      const t = 1 / (1 + 0.3275911 * absX);
+      const y = 1 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-absX * absX);
+      return sign * y;
+    }
+
+    function normCdf(x) {
+      return 0.5 * (1 + erfApprox(x / Math.sqrt(2)));
+    }
+
+    function putDelta(spot, strike, time, rate, sigma) {
+      if (spot <= 0 || strike <= 0 || time <= 0 || sigma <= 0) {
+        return strike > spot ? -1 : 0;
+      }
+      const d1 = (Math.log(spot / strike) + (rate + 0.5 * sigma * sigma) * time) / (sigma * Math.sqrt(time));
+      return normCdf(d1) - 1;
+    }
+
+    function putPrice(spot, strike, time, rate, sigma) {
+      if (spot <= 0 || strike <= 0) {
+        return 0;
+      }
+      if (time <= 0 || sigma <= 0) {
+        return Math.max(0, strike - spot);
+      }
+      const sqrtT = Math.sqrt(time);
+      const d1 = (Math.log(spot / strike) + (rate + 0.5 * sigma * sigma) * time) / (sigma * sqrtT);
+      const d2 = d1 - sigma * sqrtT;
+      return strike * Math.exp(-rate * time) * normCdf(-d2) - spot * normCdf(-d1);
+    }
+
+    function findPutStrike(spot, time, sigma, targetAbsDelta) {
+      let bestStrike = spot;
+      let bestError = Infinity;
+      for (let i = 0; i < 700; i += 1) {
+        const strike = spot * (0.55 + (0.65 * i / 699));
+        const delta = Math.abs(putDelta(spot, strike, time, RISK_FREE, sigma));
+        const error = Math.abs(delta - targetAbsDelta);
+        if (error < bestError) {
+          bestError = error;
+          bestStrike = strike;
+        }
+      }
+      return Math.round(bestStrike * 2) / 2;
+    }
+
+    function estimateSigma(points, index) {
+      const start = Math.max(1, index - 20);
+      const returns = [];
+      for (let i = start; i <= index; i += 1) {
+        const prior = points[i - 1]?.close;
+        const current = points[i]?.close;
+        if (prior > 0 && current > 0) {
+          returns.push(Math.log(current / prior));
+        }
+      }
+      if (returns.length < 2) {
+        return 0.35;
+      }
+      const mean = returns.reduce((sum, value) => sum + value, 0) / returns.length;
+      const variance = returns.reduce((sum, value) => sum + ((value - mean) ** 2), 0) / (returns.length - 1);
+      return clamp(Math.sqrt(variance) * Math.sqrt(DAYS_PER_YEAR), 0.05, 1.50);
+    }
+
+    function optionValue(leg, spot, index) {
+      if (!leg) {
+        return 0;
+      }
+      const days = Math.max(leg.expirationIndex - index, 0);
+      return putPrice(spot, leg.strike, days / DAYS_PER_YEAR, RISK_FREE, leg.sigma) * leg.contracts * 100;
+    }
+
+    function openLongPut(points, index, config) {
+      const spot = points[index].close;
+      const sigma = estimateSigma(points, index);
+      const expirationIndex = Math.min(points.length - 1, index + config.longDte);
+      const time = Math.max((expirationIndex - index) / DAYS_PER_YEAR, 1 / DAYS_PER_YEAR);
+      const strike = findPutStrike(spot, time, sigma, config.longDelta);
+      const debit = putPrice(spot, strike, time, RISK_FREE, sigma) * config.contracts * 100;
+      return {
+        leg: { strike, sigma, expirationIndex, contracts: config.contracts },
+        debit
+      };
+    }
+
+    function openShortPut(points, index, config) {
+      const spot = points[index].close;
+      const sigma = estimateSigma(points, index);
+      const expirationIndex = Math.min(points.length - 1, index + config.shortDte);
+      const time = Math.max((expirationIndex - index) / DAYS_PER_YEAR, 1 / DAYS_PER_YEAR);
+      const strike = findPutStrike(spot, time, sigma, config.shortDelta);
+      const credit = putPrice(spot, strike, time, RISK_FREE, sigma) * config.contracts * 100;
+      return {
+        leg: { strike, sigma, expirationIndex, contracts: config.contracts },
+        credit
+      };
+    }
+
+    function simulate(points, config) {
+      const startIndex = Math.max(30, Math.min(points.length - 2, 30));
+      let cash = config.startingCash;
+      let longPut = null;
+      let shortPut = null;
+      let longCost = 0;
+      let shortCredit = 0;
+      let shortSettlementLoss = 0;
+      let longExerciseCredit = 0;
+      let shortSales = 0;
+      let shortItm = 0;
+      let longRolls = 0;
+      let insuranceEvents = 0;
+      const equitySeries = [];
+      const cashSeries = [];
+      const priceSeries = [];
+      const events = [];
+
+      function pushEvent(point, event, strike, debit, credit) {
+        events.push({
+          date: fmtDate(point.date),
+          event,
+          strike,
+          debit,
+          credit,
+          cash
+        });
+      }
+
+      for (let i = startIndex; i < points.length; i += 1) {
+        const point = points[i];
+        const spot = point.close;
+
+        if (!longPut || (longPut.expirationIndex - i) <= config.rollDte) {
+          if (longPut) {
+            const closeValue = optionValue(longPut, spot, i);
+            cash += closeValue;
+            longExerciseCredit += closeValue;
+            pushEvent(point, "Close long put", longPut.strike, 0, closeValue);
+          }
+          const opened = openLongPut(points, i, config);
+          longPut = opened.leg;
+          cash -= opened.debit;
+          longCost += opened.debit;
+          longRolls += 1;
+          pushEvent(point, "Buy long put", longPut.strike, opened.debit, 0);
+        }
+
+        if (longPut && spot < longPut.strike) {
+          const intrinsic = Math.max(0, longPut.strike - spot) * longPut.contracts * 100;
+          cash += intrinsic;
+          longExerciseCredit += intrinsic;
+          insuranceEvents += 1;
+          pushEvent(point, "Exercise long put", longPut.strike, 0, intrinsic);
+          longPut = null;
+        }
+
+        if (shortPut && i >= shortPut.expirationIndex) {
+          const settlement = Math.max(0, shortPut.strike - spot) * shortPut.contracts * 100;
+          if (settlement > 0) {
+            shortItm += 1;
+            shortSettlementLoss += settlement;
+            cash -= settlement;
+          }
+          pushEvent(point, settlement > 0 ? "Settle short put ITM" : "Short put expired", shortPut.strike, settlement, 0);
+          shortPut = null;
+        }
+
+        if (!shortPut && i < points.length - 1) {
+          const opened = openShortPut(points, i, config);
+          shortPut = opened.leg;
+          cash += opened.credit;
+          shortCredit += opened.credit;
+          shortSales += 1;
+          pushEvent(point, "Sell short put", shortPut.strike, 0, opened.credit);
+        }
+
+        const longValue = optionValue(longPut, spot, i);
+        const shortValue = optionValue(shortPut, spot, i);
+        const equity = cash + longValue - shortValue;
+        equitySeries.push({ x: point.date, y: equity });
+        cashSeries.push({ x: point.date, y: cash });
+        priceSeries.push({ x: point.date, y: spot });
+      }
+
+      const values = equitySeries.map((item) => item.y);
+      const finalEquity = values.at(-1) || config.startingCash;
+      const peakDrawdown = maxDrawdown(values);
+      const years = Math.max(1 / DAYS_PER_YEAR, values.length / DAYS_PER_YEAR);
+      const cagr = Math.pow(finalEquity / config.startingCash, 1 / years) - 1;
+      const latestPoint = points.at(-1);
+      const latestSpot = latestPoint?.close || 0;
+
+      return {
+        equitySeries,
+        cashSeries,
+        priceSeries,
+        finalEquity,
+        cagr,
+        maxDrawdown: peakDrawdown,
+        premiumNet: shortCredit - shortSettlementLoss - longCost + longExerciseCredit,
+        shortSales,
+        shortItm,
+        longRolls,
+        insuranceEvents,
+        worstEquity: Math.min(...values),
+        structure: {
+          longPut,
+          shortPut,
+          latestSpot
+        },
+        events: events.slice(-18).reverse()
+      };
+    }
+
+    function maxDrawdown(values) {
+      let peak = values[0] || 0;
+      let worst = 0;
+      for (const value of values) {
+        peak = Math.max(peak, value);
+        if (peak > 0) {
+          worst = Math.min(worst, value / peak - 1);
+        }
+      }
+      return worst;
+    }
+
+    function renderChart(result) {
+      const ctx = document.getElementById("chart");
+      if (chart) {
+        chart.destroy();
+      }
+      chart = new Chart(ctx, {
+        type: "line",
+        data: {
+          datasets: [
+            {
+              label: "Equity",
+              data: result.equitySeries,
+              borderColor: "#0f766e",
+              backgroundColor: "rgba(15, 118, 110, 0.08)",
+              borderWidth: 2,
+              pointRadius: 0,
+              yAxisID: "y"
+            },
+            {
+              label: "Cash",
+              data: result.cashSeries,
+              borderColor: "#334155",
+              borderWidth: 1.5,
+              pointRadius: 0,
+              yAxisID: "y"
+            },
+            {
+              label: "Close",
+              data: result.priceSeries,
+              borderColor: "#b45309",
+              borderWidth: 1,
+              pointRadius: 0,
+              yAxisID: "price"
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: { mode: "index", intersect: false },
+          scales: {
+            x: { type: "time", time: { unit: "month" }, grid: { display: false } },
+            y: { position: "left", ticks: { callback: (value) => "$" + Number(value).toLocaleString() } },
+            price: { position: "right", grid: { drawOnChartArea: false }, ticks: { callback: (value) => "$" + Number(value).toFixed(0) } }
+          },
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: (context) => `${context.dataset.label}: ${context.dataset.yAxisID === "price" ? "$" + Number(context.parsed.y).toFixed(2) : fmtMoney(context.parsed.y)}`
+              }
+            }
+          }
+        }
+      });
+    }
+
+    function renderMetrics(result) {
+      els.final.textContent = fmtMoney(result.finalEquity);
+      els.final.className = "metric-value " + (result.finalEquity >= Number(els.cash.value) ? "good" : "bad");
+      els.cagr.textContent = fmtPct(result.cagr);
+      els.dd.textContent = fmtPct(result.maxDrawdown);
+      els.premium.textContent = fmtMoney(result.premiumNet);
+      els.shorts.textContent = String(result.shortSales);
+      els.itm.textContent = `${result.shortItm} (${result.shortSales ? ((result.shortItm / result.shortSales) * 100).toFixed(1) : "0.0"}%)`;
+      els.rolls.textContent = String(result.longRolls);
+      els.insurance.textContent = String(result.insuranceEvents);
+      els.worst.textContent = fmtMoney(result.worstEquity);
+      const longText = result.structure.longPut
+        ? `Long ${result.structure.longPut.strike.toFixed(2)} put, ${result.structure.longPut.expirationIndex} idx`
+        : "No long put";
+      const shortText = result.structure.shortPut
+        ? `Short ${result.structure.shortPut.strike.toFixed(2)} put, ${result.structure.shortPut.expirationIndex} idx`
+        : "No short put";
+      els.structure.textContent = `Spot ${result.structure.latestSpot.toFixed(2)}; ${longText}; ${shortText}`;
+    }
+
+    function renderEvents(result) {
+      els.events.innerHTML = "";
+      for (const event of result.events) {
+        const tr = document.createElement("tr");
+        tr.innerHTML = [
+          event.date,
+          event.event,
+          Number.isFinite(event.strike) ? event.strike.toFixed(2) : "",
+          event.debit ? fmtMoney(event.debit) : "",
+          event.credit ? fmtMoney(event.credit) : "",
+          fmtMoney(event.cash)
+        ].map((value) => `<td>${value}</td>`).join("");
+        els.events.appendChild(tr);
+      }
+    }
+
+    function updateUrl(config) {
+      const params = new URLSearchParams({
+        t: config.ticker,
+        contracts: String(config.contracts),
+        cash: String(config.startingCash),
+        short_delta: String(config.shortDelta),
+        short_dte: String(config.shortDte),
+        long_delta: String(config.longDelta),
+        long_dte: String(config.longDte),
+        roll_dte: String(config.rollDte)
+      });
+      history.replaceState(null, "", `${window.location.pathname}?${params.toString()}`);
+    }
+
+    async function run() {
+      const config = configFromControls();
+      updateUrl(config);
+      setStatus(`Loading ${config.ticker}...`);
+      try {
+        const points = await loadPrices(config.ticker);
+        if (points.length < Math.max(60, config.longDte + 10)) {
+          throw new Error(`Not enough price history for ${config.ticker}`);
+        }
+        const latest = points.at(-1);
+        els.latest.textContent = `${fmtDate(latest.date)} ${fmtMoney(latest.close)}`;
+        const result = simulate(points, config);
+        renderChart(result);
+        renderMetrics(result);
+        renderEvents(result);
+        setStatus(`${config.ticker}: ${points.length.toLocaleString()} daily bars. Strategy starts after the first 30 bars to estimate volatility.`);
+      } catch (error) {
+        setStatus(error instanceof Error ? error.message : String(error), true);
+      }
+    }
+
+    els.form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      run();
+    });
+    els.refresh.addEventListener("click", run);
+    syncControlsFromUrl();
+    run();
+  </script>
+</body>
+</html>

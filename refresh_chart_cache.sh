@@ -13,7 +13,7 @@ if [[ ! -f "$helper_path" ]]; then
 fi
 
 if [[ $# -lt 1 ]]; then
-  echo "usage: refresh_chart_cache.sh [--output-dir DIR] [--push] [--remote-target TARGET] [--archive-monthly] [--archive-dir DIR] TICKER [TICKER ...]" >&2
+  echo "usage: refresh_chart_cache.sh [--output-dir DIR] [--source stooq|yahoo] [--from-date YYYY-MM-DD] [--push] [--remote-target TARGET] [--archive-monthly] [--archive-dir DIR] TICKER [TICKER ...]" >&2
   exit 2
 fi
 
@@ -33,6 +33,14 @@ while [[ $# -gt 0 ]]; do
         exit 2
       fi
       output_dir="$2"
+      forward_args+=("$1" "$2")
+      shift 2
+      ;;
+    --source|--from-date|--from_date)
+      if [[ $# -lt 2 ]]; then
+        echo "$1 requires a value" >&2
+        exit 2
+      fi
       forward_args+=("$1" "$2")
       shift 2
       ;;
@@ -59,6 +67,10 @@ while [[ $# -gt 0 ]]; do
       fi
       archive_dir="$2"
       shift 2
+      ;;
+    --source=*|--from-date=*|--from_date=*)
+      forward_args+=("$1")
+      shift
       ;;
     --*)
       forward_args+=("$1")

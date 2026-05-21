@@ -1,0 +1,15 @@
+date	20260126
+buy	CASH	TOD	4000	4000
+sell	CASH	TOD	4000	4000
+
+date	20260128
+buy	CASH	TOD	4024.80	4024.80
+sell	CASH	TOD	4000	4000
+
+# Best guess: unmatched cash outflow already present in 401k ledger appears external.
+date	20260129
+sell	CASH	401k	2872.00	2872.00
+
+date	20260202
+buy	CASH	TOD	10000	10000
+sell	CASH	TOD	10000	10000

@@ -16,7 +16,7 @@ const CHROME_PATHS = [
 ];
 
 function usage() {
-  console.error("usage: refresh_chart_cache.mjs [--output-dir DIR] [--source stooq|yahoo] TICKER [TICKER ...]");
+  console.error("usage: refresh_chart_cache.mjs [--output-dir DIR] [--source stooq|yahoo] [--from-date YYYY-MM-DD] TICKER [TICKER ...]");
   process.exit(2);
 }
 
@@ -33,9 +33,35 @@ function toCsvNumber(value) {
   return Number.isFinite(value) ? String(value) : "";
 }
 
+function normalizeFromDate(raw) {
+  if (!raw) {
+    return null;
+  }
+  const value = String(raw).trim();
+  const match = value.match(/^(\d{4})-?(\d{2})-?(\d{2})$/);
+  if (!match) {
+    throw new Error(`Invalid --from-date "${value}"; expected YYYY-MM-DD`);
+  }
+  const normalized = `${match[1]}-${match[2]}-${match[3]}`;
+  const date = new Date(`${normalized}T00:00:00Z`);
+  if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== normalized) {
+    throw new Error(`Invalid --from-date "${value}"; expected a real YYYY-MM-DD date`);
+  }
+  return normalized;
+}
+
+function stooqDateParam(fromDate) {
+  return fromDate ? fromDate.replaceAll("-", "") : "";
+}
+
+function yahooPeriod1(fromDate) {
+  return fromDate ? Math.floor(new Date(`${fromDate}T00:00:00Z`).getTime() / 1000) : null;
+}
+
 function parseArgs(argv) {
   let outputDir = DEFAULT_OUTPUT_DIR;
   let source = "stooq";
+  let fromDate = null;
   const tickers = [];
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -56,8 +82,24 @@ function parseArgs(argv) {
       i += 1;
       continue;
     }
+    if (arg === "--from-date" || arg === "--from_date") {
+      if (i + 1 >= argv.length) {
+        usage();
+      }
+      fromDate = normalizeFromDate(argv[i + 1]);
+      i += 1;
+      continue;
+    }
     if (arg.startsWith("--source=")) {
       source = String(arg.slice("--source=".length)).toLowerCase();
+      continue;
+    }
+    if (arg.startsWith("--from-date=")) {
+      fromDate = normalizeFromDate(arg.slice("--from-date=".length));
+      continue;
+    }
+    if (arg.startsWith("--from_date=")) {
+      fromDate = normalizeFromDate(arg.slice("--from_date=".length));
       continue;
     }
     if (arg.startsWith("-")) {
@@ -74,7 +116,7 @@ function parseArgs(argv) {
     usage();
   }
 
-  return { outputDir, tickers, source };
+  return { outputDir, tickers, source, fromDate };
 }
 
 async function findChromePath() {
@@ -176,11 +218,12 @@ function validateCsv(text, ticker, meta = {}) {
   return trimmed + "\n";
 }
 
-async function fetchTickerFromStooq(page, ticker) {
+async function fetchTickerFromStooq(page, ticker, fromDate) {
   const symbol = stooqSymbol(ticker);
+  const d1 = stooqDateParam(fromDate);
   const rootUrl = "https://stooq.com/";
   const quoteUrl = `https://stooq.com/q/?s=${symbol}`;
-  const historyUrl = `https://stooq.com/q/d/?s=${symbol}`;
+  const historyUrl = `https://stooq.com/q/d/?s=${symbol}` + (d1 ? `&d1=${d1}` : "");
 
   await page.goto(rootUrl, { waitUntil: "domcontentloaded", timeout: 60000 });
   await page.waitForTimeout(1500);
@@ -191,8 +234,9 @@ async function fetchTickerFromStooq(page, ticker) {
   await page.goto(historyUrl, { waitUntil: "domcontentloaded", timeout: 60000 });
   await page.waitForTimeout(2500);
 
-  const result = await page.evaluate(async (symbolValue) => {
-    const response = await fetch(`/q/d/l/?s=${symbolValue}&i=d`, {
+  const result = await page.evaluate(async ({ symbolValue, d1Value }) => {
+    const d1Query = d1Value ? `&d1=${encodeURIComponent(d1Value)}` : "";
+    const response = await fetch(`/q/d/l/?s=${symbolValue}&i=d${d1Query}`, {
       method: "GET",
       credentials: "include",
       cache: "no-store"
@@ -202,7 +246,7 @@ async function fetchTickerFromStooq(page, ticker) {
       contentType: response.headers.get("content-type") || "",
       text: await response.text()
     };
-  }, symbol);
+  }, { symbolValue: symbol, d1Value: d1 });
 
   if (result.status !== 200) {
     throw new Error(
@@ -263,16 +307,27 @@ function validateYahooChartJson(payload, ticker) {
   });
 }
 
-async function fetchTickerFromYahoo(page, ticker) {
+async function fetchTickerFromYahoo(page, ticker, fromDate) {
   const historyUrl = `https://finance.yahoo.com/quote/${encodeURIComponent(ticker)}/history?p=${encodeURIComponent(ticker)}`;
 
   await page.goto(historyUrl, { waitUntil: "domcontentloaded", timeout: 60000 });
   await page.waitForTimeout(2500);
 
-  const result = await page.evaluate(async ({ symbolValue, rangeValue }) => {
+  const result = await page.evaluate(async ({ symbolValue, rangeValue, period1Value }) => {
+    const params = new URLSearchParams({
+      interval: "1d",
+      includePrePost: "false",
+      events: "div,splits"
+    });
+    if (Number.isFinite(period1Value)) {
+      params.set("period1", String(period1Value));
+      params.set("period2", String(Math.floor(Date.now() / 1000)));
+    } else {
+      params.set("range", rangeValue);
+    }
     const url =
       `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbolValue)}` +
-      `?range=${encodeURIComponent(rangeValue)}&interval=1d&includePrePost=false&events=div%2Csplits`;
+      `?${params.toString()}`;
     const response = await fetch(url, {
       method: "GET",
       credentials: "include",
@@ -283,7 +338,7 @@ async function fetchTickerFromYahoo(page, ticker) {
       contentType: response.headers.get("content-type") || "",
       text: await response.text()
     };
-  }, { symbolValue: ticker, rangeValue: YAHOO_RANGE });
+  }, { symbolValue: ticker, rangeValue: YAHOO_RANGE, period1Value: yahooPeriod1(fromDate) });
 
   if (result.status !== 200) {
     throw new Error(
@@ -307,15 +362,15 @@ async function fetchTickerFromYahoo(page, ticker) {
   return validateYahooChartJson(payload, ticker);
 }
 
-async function fetchTicker(page, ticker, source) {
+async function fetchTicker(page, ticker, source, fromDate) {
   if (source === "yahoo") {
-    return fetchTickerFromYahoo(page, ticker);
+    return fetchTickerFromYahoo(page, ticker, fromDate);
   }
-  return fetchTickerFromStooq(page, ticker);
+  return fetchTickerFromStooq(page, ticker, fromDate);
 }
 
 async function main() {
-  const { outputDir, tickers, source } = parseArgs(process.argv.slice(2));
+  const { outputDir, tickers, source, fromDate } = parseArgs(process.argv.slice(2));
   const executablePath = await findChromePath();
   await fs.mkdir(outputDir, { recursive: true });
 
@@ -336,7 +391,7 @@ async function main() {
 
   try {
     for (const ticker of tickers) {
-      const csv = await fetchTicker(page, ticker, source);
+      const csv = await fetchTicker(page, ticker, source, fromDate);
       const outputPath = path.join(outputDir, `${ticker}.csv`);
       let mergedCsv = csv;
       let mergeNote = "new";
