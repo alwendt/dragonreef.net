@@ -284,7 +284,20 @@
     </section>
 
     <section class="panel">
-      <div class="meta"><div>Recent option events</div></div>
+      <div class="meta">
+        <div>Option events: <strong id="event-count">--</strong></div>
+        <div>
+          <label style="display:inline-flex; grid-template-columns:none; align-items:center; gap:8px; text-transform:none; letter-spacing:0; font-size:13px;">
+            Show
+            <select id="event-filter" style="width:auto; min-height:30px; padding:4px 8px;">
+              <option value="all">All recent</option>
+              <option value="short-sales">Short put sales</option>
+              <option value="short-settlements">Short put expirations/settlements</option>
+              <option value="long">Long put events</option>
+            </select>
+          </label>
+        </div>
+      </div>
       <table>
         <thead><tr><th>Date</th><th>Event</th><th>Strike</th><th>Debit</th><th>Credit</th><th>Cash</th></tr></thead>
         <tbody id="events"></tbody>
@@ -323,7 +336,9 @@
       rolls: document.getElementById("m-rolls"),
       insurance: document.getElementById("m-insurance"),
       structure: document.getElementById("m-structure"),
-      worst: document.getElementById("m-worst")
+      worst: document.getElementById("m-worst"),
+      eventCount: document.getElementById("event-count"),
+      eventFilter: document.getElementById("event-filter")
     };
 
     function setStatus(text, isError = false) {
@@ -510,7 +525,7 @@
     function openLongPut(points, index, config) {
       const spot = points[index].close;
       const sigma = estimateSigma(points, index);
-      const expirationIndex = Math.min(points.length - 1, index + config.longDte);
+      const expirationIndex = index + config.longDte;
       const time = Math.max((expirationIndex - index) / DAYS_PER_YEAR, 1 / DAYS_PER_YEAR);
       const strike = findPutStrike(spot, time, sigma, config.longDelta);
       const debit = putPrice(spot, strike, time, RISK_FREE, sigma) * config.contracts * 100;
@@ -523,7 +538,7 @@
     function openShortPut(points, index, config) {
       const spot = points[index].close;
       const sigma = estimateSigma(points, index);
-      const expirationIndex = Math.min(points.length - 1, index + config.shortDte);
+      const expirationIndex = index + config.shortDte;
       const time = Math.max((expirationIndex - index) / DAYS_PER_YEAR, 1 / DAYS_PER_YEAR);
       const strike = findPutStrike(spot, time, sigma, config.shortDelta);
       const credit = putPrice(spot, strike, time, RISK_FREE, sigma) * config.contracts * 100;
@@ -625,6 +640,7 @@
       const cagr = Math.pow(finalEquity / config.startingCash, 1 / years) - 1;
       const latestPoint = points.at(-1);
       const latestSpot = latestPoint?.close || 0;
+      const latestIndex = points.length - 1;
 
       return {
         equitySeries,
@@ -642,9 +658,10 @@
         structure: {
           longPut,
           shortPut,
-          latestSpot
+          latestSpot,
+          latestIndex
         },
-        events: events.slice(-18).reverse()
+        events
       };
     }
 
@@ -709,7 +726,7 @@
             legend: { display: false },
             tooltip: {
               callbacks: {
-                label: (context) => `${context.dataset.label}: ${context.dataset.yAxisID === "price" ? "$" + Number(context.parsed.y).toFixed(2) : fmtMoney(context.parsed.y)}`
+                label: (context) => context.dataset.label + ": " + (context.dataset.yAxisID === "price" ? "$" + Number(context.parsed.y).toFixed(2) : fmtMoney(context.parsed.y))
               }
             }
           }
@@ -724,22 +741,39 @@
       els.dd.textContent = fmtPct(result.maxDrawdown);
       els.premium.textContent = fmtMoney(result.premiumNet);
       els.shorts.textContent = String(result.shortSales);
-      els.itm.textContent = `${result.shortItm} (${result.shortSales ? ((result.shortItm / result.shortSales) * 100).toFixed(1) : "0.0"}%)`;
+      els.itm.textContent = result.shortItm + " (" + (result.shortSales ? ((result.shortItm / result.shortSales) * 100).toFixed(1) : "0.0") + "%)";
       els.rolls.textContent = String(result.longRolls);
       els.insurance.textContent = String(result.insuranceEvents);
       els.worst.textContent = fmtMoney(result.worstEquity);
       const longText = result.structure.longPut
-        ? `Long ${result.structure.longPut.strike.toFixed(2)} put, ${result.structure.longPut.expirationIndex} idx`
+        ? "Long " + result.structure.longPut.strike.toFixed(2) + " put, " + Math.max(0, result.structure.longPut.expirationIndex - result.structure.latestIndex) + " DTE"
         : "No long put";
       const shortText = result.structure.shortPut
-        ? `Short ${result.structure.shortPut.strike.toFixed(2)} put, ${result.structure.shortPut.expirationIndex} idx`
+        ? "Short " + result.structure.shortPut.strike.toFixed(2) + " put, " + Math.max(0, result.structure.shortPut.expirationIndex - result.structure.latestIndex) + " DTE"
         : "No short put";
-      els.structure.textContent = `Spot ${result.structure.latestSpot.toFixed(2)}; ${longText}; ${shortText}`;
+      els.structure.textContent = "Spot " + result.structure.latestSpot.toFixed(2) + "; " + longText + "; " + shortText;
+    }
+
+    function filteredEvents(result) {
+      const filter = els.eventFilter.value;
+      if (filter === "short-sales") {
+        return result.events.filter((event) => event.event === "Sell short put");
+      }
+      if (filter === "short-settlements") {
+        return result.events.filter((event) => event.event === "Short put expired" || event.event === "Settle short put ITM");
+      }
+      if (filter === "long") {
+        return result.events.filter((event) => event.event.includes("long put"));
+      }
+      return result.events;
     }
 
     function renderEvents(result) {
       els.events.innerHTML = "";
-      for (const event of result.events) {
+      const rows = filteredEvents(result);
+      const visibleRows = rows.slice(-120).reverse();
+      els.eventCount.textContent = rows.length.toLocaleString() + " matching, showing " + visibleRows.length.toLocaleString();
+      for (const event of visibleRows) {
         const tr = document.createElement("tr");
         tr.innerHTML = [
           event.date,
@@ -748,7 +782,7 @@
           event.debit ? fmtMoney(event.debit) : "",
           event.credit ? fmtMoney(event.credit) : "",
           fmtMoney(event.cash)
-        ].map((value) => `<td>${value}</td>`).join("");
+        ].map((value) => "<td>" + value + "</td>").join("");
         els.events.appendChild(tr);
       }
     }
@@ -764,25 +798,25 @@
         long_dte: String(config.longDte),
         roll_dte: String(config.rollDte)
       });
-      history.replaceState(null, "", `${window.location.pathname}?${params.toString()}`);
+      history.replaceState(null, "", window.location.pathname + "?" + params.toString());
     }
 
     async function run() {
       const config = configFromControls();
       updateUrl(config);
-      setStatus(`Loading ${config.ticker}...`);
+      setStatus("Loading " + config.ticker + "...");
       try {
         const points = await loadPrices(config.ticker);
         if (points.length < Math.max(60, config.longDte + 10)) {
-          throw new Error(`Not enough price history for ${config.ticker}`);
+          throw new Error("Not enough price history for " + config.ticker);
         }
         const latest = points.at(-1);
-        els.latest.textContent = `${fmtDate(latest.date)} ${fmtMoney(latest.close)}`;
+        els.latest.textContent = fmtDate(latest.date) + " " + fmtMoney(latest.close);
         const result = simulate(points, config);
         renderChart(result);
         renderMetrics(result);
         renderEvents(result);
-        setStatus(`${config.ticker}: ${points.length.toLocaleString()} daily bars. Strategy starts after the first 30 bars to estimate volatility.`);
+        setStatus(config.ticker + ": " + points.length.toLocaleString() + " daily bars. Strategy starts after the first 30 bars to estimate volatility.");
       } catch (error) {
         setStatus(error instanceof Error ? error.message : String(error), true);
       }
@@ -793,6 +827,7 @@
       run();
     });
     els.refresh.addEventListener("click", run);
+    els.eventFilter.addEventListener("change", run);
     syncControlsFromUrl();
     run();
   </script>

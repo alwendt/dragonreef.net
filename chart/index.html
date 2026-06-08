@@ -179,6 +179,12 @@
     canvas {
       width: 100% !important;
       height: 500px !important;
+      cursor: grab;
+      touch-action: none;
+    }
+
+    canvas.dragging {
+      cursor: grabbing;
     }
 
     .legend {
@@ -208,6 +214,14 @@
 
     .dot.equity {
       background: #17233f;
+    }
+
+    .dot.slope {
+      background: #6d5dfc;
+    }
+
+    .hidden {
+      display: none !important;
     }
 
     .metrics {
@@ -303,6 +317,9 @@
               <select id="ma-type-input" aria-label="Moving average type">
                 <option value="simple">Simple</option>
                 <option value="exponential">Exponential</option>
+                <option value="least_squares">Least Squares Slope</option>
+                <option value="least_squares_predicted">Least Squares Predicted</option>
+                <option value="quadratic_least_squares">Quadratic Least Squares</option>
               </select>
             </label>
             <label class="param">Delta <input id="delta-input" type="number" min="0" max="0.99" step="0.01" aria-label="Call delta"></label>
@@ -327,7 +344,8 @@
       </div>
       <div class="legend">
         <span><span class="dot price"></span>Close</span>
-        <span><span class="dot sma"></span><span id="ma-legend-label">SMA 200</span></span>
+        <span id="ma-legend"><span class="dot sma"></span><span id="ma-legend-label">SMA 200</span></span>
+        <span id="slope-legend" class="hidden"><span class="dot slope"></span><span id="slope-legend-label">Least Squares signal</span></span>
         <span><span class="dot equity"></span>Strategy equity</span>
       </div>
       <div class="metrics">
@@ -411,7 +429,10 @@
     const optionDaysInput = document.getElementById("option-days-input");
     const maxTermInput = document.getElementById("max-term-input");
     const rangeControlsEl = document.getElementById("range-controls");
+    const maLegendEl = document.getElementById("ma-legend");
     const maLegendLabelEl = document.getElementById("ma-legend-label");
+    const slopeLegendEl = document.getElementById("slope-legend");
+    const slopeLegendLabelEl = document.getElementById("slope-legend-label");
     const metricFinalEl = document.getElementById("metric-final");
     const metricCagrEl = document.getElementById("metric-cagr");
     const metricMaxDdEl = document.getElementById("metric-maxdd");
@@ -440,9 +461,12 @@
     let currentDataSource = "";
     let latestPoints = [];
     let latestMaSeries = [];
+    let latestSignalSeries = [];
     let latestEquitySeries = [];
     let latestSignalEvents = [];
     let activeRange = "MAX";
+    let activeRangeEndIndex = null;
+    let dragState = null;
 
     function setStatus(message, isError = false) {
       statusEl.textContent = message;
@@ -512,7 +536,28 @@
       if (normalized === "ema" || normalized === "exponential") {
         return "exponential";
       }
+      if (normalized === "least_squares" || normalized === "least-squares" || normalized === "least squares" || normalized === "ls") {
+        return "least_squares";
+      }
+      if (normalized === "least_squares_predicted" || normalized === "least-squares-predicted" || normalized === "least squares predicted" || normalized === "lsp") {
+        return "least_squares_predicted";
+      }
+      if (normalized === "quadratic_least_squares" || normalized === "quadratic-least-squares" || normalized === "quadratic least squares" || normalized === "qls") {
+        return "quadratic_least_squares";
+      }
       return "simple";
+    }
+
+    function isLeastSquaresType(type) {
+      return type === "least_squares" || type === "least_squares_predicted" || type === "quadratic_least_squares";
+    }
+
+    function isQuadraticLeastSquaresType(type) {
+      return type === "quadratic_least_squares";
+    }
+
+    function isPredictedLeastSquaresType(type) {
+      return type === "least_squares_predicted" || type === "quadratic_least_squares";
     }
 
     function getMaType() {
@@ -520,11 +565,46 @@
     }
 
     function maLabel(type, window) {
-      return (type === "exponential" ? "EMA " : "SMA ") + window;
+      if (type === "exponential") {
+        return "EMA " + window;
+      }
+      if (type === "least_squares") {
+        return "Least Squares Slope " + window;
+      }
+      if (type === "least_squares_predicted") {
+        return "Least Squares Predicted " + window;
+      }
+      if (type === "quadratic_least_squares") {
+        return "Quadratic Least Squares " + window;
+      }
+      return "SMA " + window;
     }
 
     function maName(type) {
-      return type === "exponential" ? "exponential moving average" : "simple moving average";
+      if (type === "exponential") {
+        return "exponential moving average";
+      }
+      if (type === "least_squares") {
+        return "least-squares slope";
+      }
+      if (type === "least_squares_predicted") {
+        return "least-squares predicted trend";
+      }
+      if (type === "quadratic_least_squares") {
+        return "quadratic least-squares trend";
+      }
+      return "simple moving average";
+    }
+
+    function signalLabel(type) {
+      if (type === "least_squares_predicted") {
+        return "Least Squares tomorrow forecast";
+      }
+      return isQuadraticLeastSquaresType(type) ? "Quadratic tomorrow forecast" : "Least Squares slope";
+    }
+
+    function signalUnit(type) {
+      return isPredictedLeastSquaresType(type) ? "" : " $/day";
     }
 
     function getSurvivalThreshold() {
@@ -638,10 +718,167 @@
       return ema;
     }
 
+    function computeLeastSquares(points, windowSize) {
+      const fittedSeries = new Array(points.length).fill(null);
+      const slopeSeries = new Array(points.length).fill(null);
+      const forecastSeries = new Array(points.length).fill(null);
+      const n = windowSize;
+      const sumX = (n * (n - 1)) / 2;
+      const sumX2 = ((n - 1) * n * ((2 * n) - 1)) / 6;
+      const denominator = (n * sumX2) - (sumX * sumX);
+      if (denominator === 0) {
+        return { fittedSeries, slopeSeries, forecastSeries };
+      }
+
+      for (let i = windowSize - 1; i < points.length; i += 1) {
+        let sumY = 0;
+        let sumXY = 0;
+        for (let offset = 0; offset < windowSize; offset += 1) {
+          const y = points[i - windowSize + 1 + offset].close;
+          sumY += y;
+          sumXY += offset * y;
+        }
+        const slope = ((n * sumXY) - (sumX * sumY)) / denominator;
+        const intercept = (sumY - (slope * sumX)) / n;
+        slopeSeries[i] = slope;
+        fittedSeries[i] = intercept + (slope * (windowSize - 1));
+        forecastSeries[i] = intercept + (slope * windowSize);
+      }
+      return { fittedSeries, slopeSeries, forecastSeries };
+    }
+
+    function computeQuadraticLeastSquares(points, windowSize) {
+      const fittedSeries = new Array(points.length).fill(null);
+      const forecastSeries = new Array(points.length).fill(null);
+      const n = windowSize;
+      let sumX = 0;
+      let sumX2 = 0;
+      let sumX3 = 0;
+      let sumX4 = 0;
+      for (let offset = 0; offset < windowSize; offset += 1) {
+        const x = offset;
+        const x2 = x * x;
+        sumX += x;
+        sumX2 += x2;
+        sumX3 += x2 * x;
+        sumX4 += x2 * x2;
+      }
+
+      for (let i = windowSize - 1; i < points.length; i += 1) {
+        let sumY = 0;
+        let sumXY = 0;
+        let sumX2Y = 0;
+        for (let offset = 0; offset < windowSize; offset += 1) {
+          const x = offset;
+          const x2 = x * x;
+          const y = points[i - windowSize + 1 + offset].close;
+          sumY += y;
+          sumXY += x * y;
+          sumX2Y += x2 * y;
+        }
+        const coeffs = solveLinearSystem3x3(
+          [
+            [n, sumX, sumX2],
+            [sumX, sumX2, sumX3],
+            [sumX2, sumX3, sumX4]
+          ],
+          [sumY, sumXY, sumX2Y]
+        );
+        if (!coeffs || coeffs.some((value) => !Number.isFinite(value))) {
+          continue;
+        }
+        const x = windowSize - 1;
+        fittedSeries[i] = coeffs[0] + (coeffs[1] * x) + (coeffs[2] * x * x);
+        const tomorrowX = windowSize;
+        forecastSeries[i] = coeffs[0] + (coeffs[1] * tomorrowX) + (coeffs[2] * tomorrowX * tomorrowX);
+      }
+      return { fittedSeries, forecastSeries };
+    }
+
     function computeMa(points, windowSize, type) {
-      return type === "exponential"
-        ? computeEma(points, windowSize)
-        : computeSma(points, windowSize);
+      if (type === "exponential") {
+        return computeEma(points, windowSize);
+      }
+      if (type === "least_squares") {
+        return computeLeastSquares(points, windowSize).fittedSeries;
+      }
+      if (type === "least_squares_predicted") {
+        return computeLeastSquares(points, windowSize).fittedSeries;
+      }
+      if (type === "quadratic_least_squares") {
+        return computeQuadraticLeastSquares(points, windowSize).fittedSeries;
+      }
+      return computeSma(points, windowSize);
+    }
+
+    function computeSignalSeries(points, windowSize, type) {
+      if (type === "least_squares") {
+        return computeLeastSquares(points, windowSize).slopeSeries;
+      }
+      if (type === "least_squares_predicted") {
+        return computeLeastSquares(points, windowSize).forecastSeries;
+      }
+      if (type === "quadratic_least_squares") {
+        return computeQuadraticLeastSquares(points, windowSize).forecastSeries;
+      }
+      return computeMa(points, windowSize, type);
+    }
+
+    function hasTradeSignal(signalValue) {
+      return signalValue !== null && Number.isFinite(signalValue);
+    }
+
+    function isSellSignal(price, signalValue, type) {
+      if (isPredictedLeastSquaresType(type)) {
+        return signalValue < price;
+      }
+      return isLeastSquaresType(type) ? signalValue < 0 : price < signalValue;
+    }
+
+    function isBuySignal(price, signalValue, type) {
+      if (isPredictedLeastSquaresType(type)) {
+        return signalValue > price;
+      }
+      return isLeastSquaresType(type) ? signalValue > 0 : price > signalValue;
+    }
+
+    function buildLeastSquaresFitSegments(points, windowSize) {
+      const segmentData = [];
+      const n = windowSize;
+      const sumX = (n * (n - 1)) / 2;
+      const sumX2 = ((n - 1) * n * ((2 * n) - 1)) / 6;
+      const denominator = (n * sumX2) - (sumX * sumX);
+      if (denominator === 0) {
+        return segmentData;
+      }
+
+      for (let endIndex = windowSize - 1; endIndex < points.length; endIndex += windowSize * 2) {
+        let sumY = 0;
+        let sumXY = 0;
+        for (let offset = 0; offset < windowSize; offset += 1) {
+          const y = points[endIndex - windowSize + 1 + offset].close;
+          sumY += y;
+          sumXY += offset * y;
+        }
+        const slope = ((n * sumXY) - (sumX * sumY)) / denominator;
+        const intercept = (sumY - (slope * sumX)) / n;
+        const startIndex = endIndex - windowSize + 1;
+        segmentData.push(
+          {
+            x: points[startIndex].date,
+            y: Number(intercept.toFixed(2))
+          },
+          {
+            x: points[endIndex].date,
+            y: Number((intercept + (slope * (windowSize - 1))).toFixed(2))
+          },
+          {
+            x: points[endIndex].date,
+            y: null
+          }
+        );
+      }
+      return segmentData;
     }
 
     function computeCloseStd(points, windowSize) {
@@ -881,7 +1118,7 @@
       return Math.max(0, Math.min(1, fitted));
     }
 
-    function buildSurvivalCalibration(points, maSeries, delta) {
+    function buildSurvivalCalibration(points, maSeries, signalSeries, maType, delta) {
       if (!(delta > 0)) {
         return null;
       }
@@ -890,8 +1127,9 @@
         const samples = [];
         for (let index = 0; index + termDays < points.length; index += 1) {
           const movingAverage = maSeries[index];
+          const tradeSignal = signalSeries[index];
           const price = points[index].close;
-          if (movingAverage === null || !(price > movingAverage)) {
+          if (movingAverage === null || !hasTradeSignal(tradeSignal) || !isBuySignal(price, tradeSignal, maType)) {
             continue;
           }
           const sigma = estimateSigma(points, index);
@@ -903,7 +1141,8 @@
           let forcedBuyback = false;
           for (let future = index + 1; future < expirationIndex; future += 1) {
             const futureMa = maSeries[future];
-            if (futureMa !== null && points[future].close < futureMa) {
+            const futureSignal = signalSeries[future];
+            if (futureMa !== null && hasTradeSignal(futureSignal) && isSellSignal(points[future].close, futureSignal, maType)) {
               forcedBuyback = true;
               break;
             }
@@ -919,7 +1158,7 @@
       return models;
     }
 
-    function chooseSuggestedTerm(points, maSeries, index, targetSurvival = DEFAULT_SURVIVAL_THRESHOLD, delta = DEFAULT_DELTA, calibration = null, maxTerm = null) {
+    function chooseSuggestedTerm(points, maSeries, signalSeries, maType, index, targetSurvival = DEFAULT_SURVIVAL_THRESHOLD, delta = DEFAULT_DELTA, calibration = null, maxTerm = null) {
       const candidateTerms = [20, 15, 10, 5].filter((termDays) => maxTerm === null || termDays <= maxTerm);
       if (!(delta > 0)) {
         return {
@@ -931,8 +1170,16 @@
 
       const price = points[index].close;
       const movingAverage = maSeries[index];
+      const tradeSignal = signalSeries[index];
 
-      if (movingAverage === null) {
+      if (movingAverage === null || !hasTradeSignal(tradeSignal)) {
+        if (isLeastSquaresType(maType)) {
+          return {
+            termDays: 0,
+            estSurvival: 0,
+            rawSurvival: 0
+          };
+        }
         return {
           termDays: candidateTerms[0] || 0,
           estSurvival: 1,
@@ -940,7 +1187,7 @@
         };
       }
 
-      if (!(price > movingAverage)) {
+      if (!isBuySignal(price, tradeSignal, maType)) {
         return {
           termDays: 0,
           estSurvival: 0,
@@ -970,10 +1217,22 @@
     }
 
     function belowMaReason(config) {
+      if (isPredictedLeastSquaresType(config.maType)) {
+        return signalLabel(config.maType) + " fell below close";
+      }
+      if (isLeastSquaresType(config.maType)) {
+        return signalLabel(config.maType) + " turned negative";
+      }
       return "Close fell below " + maLabel(config.maType, config.smaWindow);
     }
 
     function aboveMaReason(config) {
+      if (isPredictedLeastSquaresType(config.maType)) {
+        return signalLabel(config.maType) + " rose above close after delay";
+      }
+      if (isLeastSquaresType(config.maType)) {
+        return signalLabel(config.maType) + " turned positive after delay";
+      }
       return "Close moved back above " + maLabel(config.maType, config.smaWindow) + " after delay";
     }
 
@@ -1049,9 +1308,20 @@
       return (price - low) / (high - low);
     }
 
-    function simulateStrategy(points, config) {
+    function targetFractionForSignal(price, maValue, stdDev, signalValue, config, currentFraction) {
+      if (isLeastSquaresType(config.maType)) {
+        if (!hasTradeSignal(signalValue)) {
+          return currentFraction === null ? 0 : currentFraction;
+        }
+        return isBuySignal(price, signalValue, config.maType) ? 1 : 0;
+      }
+      return targetFractionLinear(price, maValue, stdDev);
+    }
+
+      function simulateStrategy(points, config) {
       const maSeries = computeMa(points, config.smaWindow, config.maType);
-      const survivalCalibration = buildSurvivalCalibration(points, maSeries, config.delta);
+      const signalSeries = computeSignalSeries(points, config.smaWindow, config.maType);
+      const survivalCalibration = buildSurvivalCalibration(points, maSeries, signalSeries, config.maType, config.delta);
       let invested = true;
       let shares = config.startingCapital / points[0].close;
       let cash = 0;
@@ -1070,6 +1340,10 @@
       let investedDays = 0;
       let currentInvestmentLabel = "100%";
       let previousInvestedState = null;
+      let openRoundTripPurchasePrice = points.length ? points[0].close : null;
+      let lastCompletedRoundTripSalePrice = null;
+      let lastCompletedRoundTripSaleIndex = null;
+      let lastCompletedRoundTripLostMoney = false;
       const signalEvents = [];
       const termCounts = {
         0: 0,
@@ -1090,7 +1364,8 @@
       for (let i = 0; i < points.length; i += 1) {
         const price = points[i].close;
         const movingAverage = maSeries[i];
-        const hasMa = movingAverage !== null;
+        const tradeSignal = signalSeries[i];
+        const hasSignal = hasTradeSignal(tradeSignal);
         let justExited = false;
 
         if (invested && activeOption && activeOption.expirationIndex === i) {
@@ -1107,12 +1382,21 @@
           expirations += 1;
         }
 
-        if (invested && hasMa && price < movingAverage) {
+        const suppressSaleAfterLoss = lastCompletedRoundTripLostMoney &&
+          lastCompletedRoundTripSalePrice !== null &&
+          lastCompletedRoundTripSaleIndex !== null &&
+          i - lastCompletedRoundTripSaleIndex <= config.smaWindow * 2 &&
+          price > lastCompletedRoundTripSalePrice;
+
+        if (invested && hasSignal && isSellSignal(price, tradeSignal, config.maType) && !suppressSaleAfterLoss) {
           const optionValue = optionMarketValue(activeOption, price, i);
           if (activeOption) {
             forcedSales += 1;
             forcedPurchaseDollars += shares * optionValue;
           }
+          lastCompletedRoundTripSalePrice = price;
+          lastCompletedRoundTripSaleIndex = i;
+          lastCompletedRoundTripLostMoney = openRoundTripPurchasePrice !== null && price < openRoundTripPurchasePrice;
           cash = cash + shares * price - shares * optionValue;
           shares = 0;
           activeOption = null;
@@ -1132,8 +1416,9 @@
           if (!justExited) {
             cash *= 1 + CASH_RATE / DAYS_PER_YEAR;
           }
-          if (hasMa && i >= reentryIndex && price > movingAverage) {
+          if (hasSignal && i >= reentryIndex && isBuySignal(price, tradeSignal, config.maType)) {
             invested = true;
+            openRoundTripPurchasePrice = price;
             shares = cash / price;
             cash = 0;
             currentRegime = "Invested";
@@ -1149,7 +1434,7 @@
         if (invested && !activeOption) {
           const suggestion = config.delta <= 0
             ? { termDays: 0, estSurvival: 0, rawSurvival: 0 }
-            : chooseSuggestedTerm(points, maSeries, i, config.survivalThreshold, config.delta, survivalCalibration, config.maxTerm);
+            : chooseSuggestedTerm(points, maSeries, signalSeries, config.maType, i, config.survivalThreshold, config.delta, survivalCalibration, config.maxTerm);
           termCounts[suggestion.termDays] += 1;
           if (suggestion.termDays > 0) {
             const expirationIndex = Math.min(i + suggestion.termDays, points.length - 1);
@@ -1183,7 +1468,8 @@
       const latestIndex = points.length - 1;
       const latestMa = latestIndex >= 0 ? maSeries[latestIndex] : null;
       const latestPrice = latestIndex >= 0 ? points[latestIndex].close : 0;
-      if (!invested && latestMa !== null && latestPrice > latestMa && latestIndex < reentryIndex) {
+      const latestSignal = latestIndex >= 0 ? signalSeries[latestIndex] : null;
+      if (!invested && hasTradeSignal(latestSignal) && isBuySignal(latestPrice, latestSignal, config.maType) && latestIndex < reentryIndex) {
         currentInvestmentLabel = "holding at all cash";
       } else {
         currentInvestmentLabel = invested ? "100%" : "All Cash";
@@ -1192,6 +1478,7 @@
       return {
         startingEquity: config.startingCapital,
         smaSeries: maSeries,
+        signalSeries,
         equitySeries,
         currentRegime,
         currentInvestmentLabel,
@@ -1213,7 +1500,8 @@
 
     function simulateQuantizedStrategy(points, config) {
       const maSeries = computeMa(points, config.smaWindow, config.maType);
-      const survivalCalibration = buildSurvivalCalibration(points, maSeries, config.delta);
+      const signalSeries = computeSignalSeries(points, config.smaWindow, config.maType);
+      const survivalCalibration = buildSurvivalCalibration(points, maSeries, signalSeries, config.maType, config.delta);
       const stdSeries = computeCloseStd(points, config.smaWindow);
       const buckets = bucketFractions(config.buckets);
       const equitySeries = new Array(points.length).fill(null);
@@ -1234,6 +1522,10 @@
       let currentRegime = "All Cash";
       let currentInvestmentLabel = "All Cash";
       let previousActualFraction = null;
+      let openRoundTripPurchasePrice = null;
+      let lastCompletedRoundTripSalePrice = null;
+      let lastCompletedRoundTripSaleIndex = null;
+      let lastCompletedRoundTripLostMoney = false;
       const signalEvents = [];
       const termCounts = {
         0: 0,
@@ -1260,14 +1552,26 @@
           activeOption = null;
         }
 
-        const rawFraction = quantizeFraction(targetFractionLinear(price, maSeries[i], stdSeries[i]), buckets);
+        const rawFraction = quantizeFraction(targetFractionForSignal(price, maSeries[i], stdSeries[i], signalSeries[i], config, actualFraction), buckets);
+        const suppressSaleAfterLoss = lastCompletedRoundTripLostMoney &&
+          lastCompletedRoundTripSalePrice !== null &&
+          lastCompletedRoundTripSaleIndex !== null &&
+          i - lastCompletedRoundTripSaleIndex <= config.smaWindow * 2 &&
+          price > lastCompletedRoundTripSalePrice;
         if (actualFraction === null) {
           actualFraction = rawFraction;
-        } else if (rawFraction < actualFraction) {
+          if (actualFraction > 0) {
+            openRoundTripPurchasePrice = price;
+          }
+        } else if (rawFraction < actualFraction && !suppressSaleAfterLoss) {
           actualFraction = rawFraction;
+          lastCompletedRoundTripSalePrice = price;
+          lastCompletedRoundTripSaleIndex = i;
+          lastCompletedRoundTripLostMoney = openRoundTripPurchasePrice !== null && price < openRoundTripPurchasePrice;
           cooldownUntil = i + config.delayDays;
         } else if (rawFraction > actualFraction && i >= cooldownUntil) {
           actualFraction = rawFraction;
+          openRoundTripPurchasePrice = price;
         }
 
         if (rawFraction > actualFraction && i < cooldownUntil) {
@@ -1316,7 +1620,7 @@
 
         const coveredContracts = Math.floor(shares / 100);
         if (!activeOption) {
-          const termDays = config.delta <= 0 ? 0 : chooseSuggestedTerm(points, maSeries, i, config.survivalThreshold, config.delta, survivalCalibration, config.maxTerm).termDays;
+          const termDays = config.delta <= 0 ? 0 : chooseSuggestedTerm(points, maSeries, signalSeries, config.maType, i, config.survivalThreshold, config.delta, survivalCalibration, config.maxTerm).termDays;
           termCounts[termDays] += coveredContracts > 0 ? coveredContracts : 1;
           if (termDays > 0 && coveredContracts > 0) {
             const expirationIndex = Math.min(i + termDays, points.length - 1);
@@ -1345,6 +1649,7 @@
       return {
         startingEquity: config.startingCapital,
         smaSeries: maSeries,
+        signalSeries,
         equitySeries,
         currentRegime,
         currentInvestmentLabel,
@@ -1447,26 +1752,43 @@
       }
     }
 
-    function sliceSeriesByRange(points, maSeries, equitySeries, signalEvents, range) {
+    function clampRangeEndIndex(points) {
+      if (!points.length) {
+        return 0;
+      }
+      if (activeRangeEndIndex === null || activeRangeEndIndex === undefined) {
+        return points.length - 1;
+      }
+      return Math.max(0, Math.min(points.length - 1, activeRangeEndIndex));
+    }
+
+    function sliceSeriesByRange(points, maSeries, signalSeries, equitySeries, signalEvents, range) {
       if (!points.length || range === "MAX") {
-        return { points, maSeries, equitySeries, signalEvents };
+        return { points, maSeries, signalSeries, equitySeries, signalEvents };
       }
 
-      const startDate = rangeStartDate(points[points.length - 1].date, range);
+      const endIndex = clampRangeEndIndex(points);
+      activeRangeEndIndex = endIndex;
+      const endDate = points[endIndex].date;
+      const startDate = rangeStartDate(endDate, range);
       if (!startDate) {
-        return { points, maSeries, equitySeries, signalEvents };
+        return { points, maSeries, signalSeries, equitySeries, signalEvents };
       }
 
       let startIndex = points.findIndex((point) => point.date >= startDate);
       if (startIndex === -1) {
         startIndex = 0;
       }
+      if (startIndex > endIndex) {
+        startIndex = endIndex;
+      }
 
       return {
-        points: points.slice(startIndex),
-        maSeries: maSeries.slice(startIndex),
-        equitySeries: equitySeries.slice(startIndex),
-        signalEvents: signalEvents.filter((event) => event.date >= startDate)
+        points: points.slice(startIndex, endIndex + 1),
+        maSeries: maSeries.slice(startIndex, endIndex + 1),
+        signalSeries: signalSeries.slice(startIndex, endIndex + 1),
+        equitySeries: equitySeries.slice(startIndex, endIndex + 1),
+        signalEvents: signalEvents.filter((event) => event.date >= startDate && event.date <= endDate)
       };
     }
 
@@ -1478,25 +1800,31 @@
     }
 
     function renderChartRange(config) {
-      const sliced = sliceSeriesByRange(latestPoints, latestMaSeries, latestEquitySeries, latestSignalEvents, activeRange);
-      buildChart(sliced.points, sliced.maSeries, sliced.equitySeries, sliced.signalEvents, config);
+      const sliced = sliceSeriesByRange(latestPoints, latestMaSeries, latestSignalSeries, latestEquitySeries, latestSignalEvents, activeRange);
+      buildChart(sliced.points, sliced.maSeries, sliced.signalSeries, sliced.equitySeries, sliced.signalEvents, config);
 
       if (sliced.points.length) {
         setStatus(
           "Showing " + sliced.points.length + " trading days from " +
           formatDate(sliced.points[0].date) + " to " + formatDate(sliced.points[sliced.points.length - 1].date) +
-          (activeRange === "MAX" ? "." : " (" + activeRange + " view).")
+          (activeRange === "MAX" ? "." : " (" + activeRange + " view; drag chart left/right to pan).")
         );
       }
 
       updateRangeButtons();
     }
 
-    function buildChart(points, maSeries, equitySeries, signalEvents, config) {
+    function buildChart(points, maSeries, signalSeries, equitySeries, signalEvents, config) {
       const ctx = document.getElementById("chart").getContext("2d");
       const labels = points.map((point) => point.date);
       const prices = points.map((point) => point.close);
-      const roundedMaSeries = maSeries.map((value) => (value ? Number(value.toFixed(2)) : null));
+      const roundedMaSeries = maSeries.map((value) => (value === null ? null : Number(value.toFixed(2))));
+      const roundedSignalSeries = isLeastSquaresType(config.maType)
+        ? signalSeries.map((value) => (value === null ? null : Number(value.toFixed(isPredictedLeastSquaresType(config.maType) ? 2 : 4))))
+        : [];
+      const leastSquaresSegments = config.maType === "least_squares"
+        ? buildLeastSquaresFitSegments(points, config.smaWindow)
+        : [];
       const roundedEquity = equitySeries.map((value) => (value === null ? null : Number(value.toFixed(2))));
       const buySignals = signalEvents
         .filter((event) => event.action === "Buy")
@@ -1519,68 +1847,111 @@
         chart.destroy();
       }
 
+      const datasets = [
+        {
+          label: "Close",
+          data: prices,
+          borderColor: "#0e7c86",
+          backgroundColor: "rgba(14, 124, 134, 0.10)",
+          borderWidth: 2,
+          fill: false,
+          pointRadius: 0,
+          tension: 0.15,
+          yAxisID: "price"
+        }
+      ];
+
+      if (!isLeastSquaresType(config.maType)) {
+        datasets.push({
+          label: maLabel(config.maType, config.smaWindow),
+          data: roundedMaSeries,
+          borderColor: "#f2a154",
+          borderWidth: 2,
+          pointRadius: 0,
+          tension: 0.1,
+          yAxisID: "price"
+        });
+      }
+
+      if (isLeastSquaresType(config.maType)) {
+        if (leastSquaresSegments.length) {
+          datasets.push({
+            label: "LS fit segments",
+            data: leastSquaresSegments,
+            borderColor: "rgba(196, 69, 54, 0.78)",
+            borderWidth: 1.4,
+            pointRadius: 0,
+            tension: 0,
+            spanGaps: false,
+            yAxisID: "price"
+          });
+        }
+        datasets.push({
+          label: signalLabel(config.maType),
+          data: roundedSignalSeries,
+          borderColor: "#6d5dfc",
+          borderWidth: 1.8,
+          pointRadius: 0,
+          tension: 0.1,
+          yAxisID: isPredictedLeastSquaresType(config.maType) ? "price" : "slope"
+        });
+        if (!isPredictedLeastSquaresType(config.maType)) {
+          datasets.push({
+            label: "Zero slope",
+            data: labels.map(() => 0),
+            borderColor: "rgba(109, 93, 252, 0.35)",
+            borderDash: [6, 4],
+            borderWidth: 1,
+            pointRadius: 0,
+            yAxisID: "slope"
+          });
+        }
+      }
+
+      datasets.push(
+        {
+          label: "Strategy equity",
+          data: roundedEquity,
+          borderColor: "#17233f",
+          backgroundColor: "rgba(23, 35, 63, 0.08)",
+          borderWidth: 2.5,
+          pointRadius: 0,
+          tension: 0.1,
+          yAxisID: "equity"
+        },
+        {
+          type: "scatter",
+          label: "Buy signal",
+          data: buySignals,
+          yAxisID: "price",
+          pointRadius: 6,
+          pointHoverRadius: 7,
+          pointStyle: "triangle",
+          pointRotation: 0,
+          backgroundColor: "#2b9348",
+          borderColor: "#1f6f35",
+          borderWidth: 1
+        },
+        {
+          type: "scatter",
+          label: "Sell signal",
+          data: sellSignals,
+          yAxisID: "price",
+          pointRadius: 6,
+          pointHoverRadius: 7,
+          pointStyle: "triangle",
+          pointRotation: 180,
+          backgroundColor: "#c44536",
+          borderColor: "#8d2f24",
+          borderWidth: 1
+        }
+      );
+
       chart = new Chart(ctx, {
         type: "line",
         data: {
           labels,
-          datasets: [
-            {
-              label: "Close",
-              data: prices,
-              borderColor: "#0e7c86",
-              backgroundColor: "rgba(14, 124, 134, 0.10)",
-              borderWidth: 2,
-              fill: false,
-              pointRadius: 0,
-              tension: 0.15,
-              yAxisID: "price"
-            },
-            {
-              label: maLabel(config.maType, config.smaWindow),
-              data: roundedMaSeries,
-              borderColor: "#f2a154",
-              borderWidth: 2,
-              pointRadius: 0,
-              tension: 0.1,
-              yAxisID: "price"
-            },
-            {
-              label: "Strategy equity",
-              data: roundedEquity,
-              borderColor: "#17233f",
-              backgroundColor: "rgba(23, 35, 63, 0.08)",
-              borderWidth: 2.5,
-              pointRadius: 0,
-              tension: 0.1,
-              yAxisID: "equity"
-            },
-            {
-              type: "scatter",
-              label: "Buy signal",
-              data: buySignals,
-              yAxisID: "price",
-              pointRadius: 6,
-              pointHoverRadius: 7,
-              pointStyle: "triangle",
-              pointRotation: 0,
-              backgroundColor: "#2b9348",
-              borderColor: "#1f6f35",
-              borderWidth: 1
-            },
-            {
-              type: "scatter",
-              label: "Sell signal",
-              data: sellSignals,
-              yAxisID: "price",
-              pointRadius: 6,
-              pointHoverRadius: 7,
-              pointStyle: "triangle",
-              pointRotation: 180,
-              backgroundColor: "#c44536",
-              borderColor: "#8d2f24",
-              borderWidth: 1
-            }
-          ]
+          datasets
         },
         options: {
           maintainAspectRatio: false,
@@ -1613,6 +1984,17 @@
                       minimumFractionDigits: 2,
                       maximumFractionDigits: 2
                     });
+                  }
+                  if (isPredictedLeastSquaresType(config.maType) && context.dataset.label === signalLabel(config.maType)) {
+                    return context.dataset.label + ": " + value.toLocaleString(undefined, {
+                      style: "currency",
+                      currency: "USD",
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2
+                    });
+                  }
+                  if (context.dataset.yAxisID === "slope") {
+                    return context.dataset.label + ": " + value.toFixed(4) + signalUnit(config.maType);
                   }
                   return context.dataset.label + ": " + value.toLocaleString(undefined, {
                     style: "currency",
@@ -1653,11 +2035,76 @@
               grid: {
                 drawOnChartArea: false
               }
+            },
+            slope: {
+              type: "linear",
+              display: config.maType === "least_squares",
+              position: "right",
+              ticks: {
+                callback: (value) => Number(value).toFixed(2)
+              },
+              grid: {
+                drawOnChartArea: false
+              }
             }
           }
         }
       });
 
+      attachChartDragHandlers(points);
+    }
+
+    function attachChartDragHandlers(visiblePoints) {
+      const canvas = document.getElementById("chart");
+      canvas.onpointerdown = null;
+      canvas.onpointermove = null;
+      canvas.onpointerup = null;
+      canvas.onpointercancel = null;
+      canvas.onpointerleave = null;
+
+      if (activeRange === "MAX" || !latestPoints.length || !visiblePoints.length) {
+        return;
+      }
+
+      canvas.onpointerdown = (event) => {
+        if (!chart || !chart.chartArea) {
+          return;
+        }
+        dragState = {
+          pointerId: event.pointerId,
+          startX: event.clientX,
+          startEndIndex: clampRangeEndIndex(latestPoints),
+          visibleCount: visiblePoints.length,
+          chartWidth: Math.max(1, chart.chartArea.right - chart.chartArea.left),
+          lastShift: 0
+        };
+        canvas.classList.add("dragging");
+        canvas.setPointerCapture(event.pointerId);
+      };
+
+      canvas.onpointermove = (event) => {
+        if (!dragState || dragState.pointerId !== event.pointerId) {
+          return;
+        }
+        const deltaX = event.clientX - dragState.startX;
+        const barShift = Math.round((deltaX / dragState.chartWidth) * dragState.visibleCount);
+        if (barShift === dragState.lastShift) {
+          return;
+        }
+        dragState.lastShift = barShift;
+        activeRangeEndIndex = Math.max(0, Math.min(latestPoints.length - 1, dragState.startEndIndex - barShift));
+        renderChartRange(readFormConfig());
+      };
+
+      const endDrag = (event) => {
+        if (dragState && dragState.pointerId === event.pointerId) {
+          dragState = null;
+          canvas.classList.remove("dragging");
+        }
+      };
+      canvas.onpointerup = endDrag;
+      canvas.onpointercancel = endDrag;
+      canvas.onpointerleave = endDrag;
     }
 
     async function fetchCsv(url) {
@@ -1687,14 +2134,16 @@
         const stats = computeStats(simulation.equitySeries, simulation.startingEquity);
         latestPoints = points;
         latestMaSeries = simulation.smaSeries;
+        latestSignalSeries = simulation.signalSeries || [];
         latestEquitySeries = simulation.equitySeries;
         latestSignalEvents = simulation.signalEvents || [];
+        activeRangeEndIndex = null;
         renderChartRange(config);
 
         const latest = points[points.length - 1];
         const suggestion = config.delta <= 0
           ? { termDays: 0, estSurvival: 0, rawSurvival: 0 }
-          : chooseSuggestedTerm(points, simulation.smaSeries, points.length - 1, config.survivalThreshold, config.delta, simulation.survivalCalibration, config.maxTerm);
+          : chooseSuggestedTerm(points, simulation.smaSeries, simulation.signalSeries, config.maType, points.length - 1, config.survivalThreshold, config.delta, simulation.survivalCalibration, config.maxTerm);
         latestEl.textContent = "Latest close: $" + latest.close.toFixed(2) + " (" + formatDate(latest.date) + ")";
         dataSourceEl.textContent = currentDataSource || ("Daily prices (" + ticker + ")");
         metricFinalEl.textContent = formatMoney(stats.finalEquity);
@@ -1716,6 +2165,7 @@
         currentDataSource = "";
         latestPoints = [];
         latestMaSeries = [];
+        latestSignalSeries = [];
         latestEquitySeries = [];
         latestSignalEvents = [];
         metricFinalEl.textContent = "$--";
@@ -1754,6 +2204,9 @@
       }
       dataSourceEl.textContent = currentDataSource || ("Daily prices (" + symbol + ")");
       maLegendLabelEl.textContent = maLabel(config.maType, config.smaWindow);
+      maLegendEl.classList.toggle("hidden", isLeastSquaresType(config.maType));
+      slopeLegendEl.classList.toggle("hidden", !isLeastSquaresType(config.maType));
+      slopeLegendLabelEl.textContent = signalLabel(config.maType);
       tickerInput.value = ticker;
       smaInput.value = String(config.smaWindow);
       maTypeInput.value = config.maType;
@@ -1829,6 +2282,7 @@
         return;
       }
       activeRange = button.dataset.range || "MAX";
+      activeRangeEndIndex = null;
       renderChartRange(readFormConfig());
     });
 
