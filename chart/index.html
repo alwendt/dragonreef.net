@@ -374,6 +374,10 @@
           <div class="metric-value" id="metric-suggested-investment">--</div>
         </div>
         <div class="metric-card">
+          <div class="metric-label">Sell Below</div>
+          <div class="metric-value" id="metric-sell-below">--</div>
+        </div>
+        <div class="metric-card">
           <div class="metric-label">Expirations</div>
           <div class="metric-value" id="metric-expirations">--</div>
         </div>
@@ -439,6 +443,7 @@
     const metricRegimeEl = document.getElementById("metric-regime");
     const metricSuggestedTermEl = document.getElementById("metric-suggested-term");
     const metricSuggestedInvestmentEl = document.getElementById("metric-suggested-investment");
+    const metricSellBelowEl = document.getElementById("metric-sell-below");
     const metricExpirationsEl = document.getElementById("metric-expirations");
     const metricForcedSalesEl = document.getElementById("metric-forced-sales");
     const metricCalloutsEl = document.getElementById("metric-callouts");
@@ -852,7 +857,8 @@
         return segmentData;
       }
 
-      for (let endIndex = windowSize - 1; endIndex < points.length; endIndex += windowSize * 2) {
+      const segments = [];
+      for (let endIndex = points.length - 1; endIndex >= windowSize - 1; endIndex -= windowSize * 2) {
         let sumY = 0;
         let sumXY = 0;
         for (let offset = 0; offset < windowSize; offset += 1) {
@@ -863,7 +869,7 @@
         const slope = ((n * sumXY) - (sumX * sumY)) / denominator;
         const intercept = (sumY - (slope * sumX)) / n;
         const startIndex = endIndex - windowSize + 1;
-        segmentData.push(
+        segments.push([
           {
             x: points[startIndex].date,
             y: Number(intercept.toFixed(2))
@@ -876,7 +882,10 @@
             x: points[endIndex].date,
             y: null
           }
-        );
+        ]);
+      }
+      for (let i = segments.length - 1; i >= 0; i -= 1) {
+        segmentData.push(...segments[i]);
       }
       return segmentData;
     }
@@ -1428,6 +1437,8 @@
               action: "Buy",
               reason: aboveMaReason(config)
             });
+          } else if (i >= reentryIndex) {
+            currentRegime = "All Cash";
           }
         }
 
@@ -1702,8 +1713,65 @@
       });
     }
 
+    function formatMoneyCents(value) {
+      return value.toLocaleString(undefined, {
+        style: "currency",
+        currency: "USD",
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+      });
+    }
+
     function formatPercent(value) {
       return (value * 100).toFixed(2) + "%";
+    }
+
+    function computeSellBelow(points, config) {
+      const windowSize = config.smaWindow;
+      if (points.length < windowSize - 1) {
+        return null;
+      }
+
+      if (config.maType === "simple") {
+        const prior = points.slice(-(windowSize - 1));
+        if (prior.length < windowSize - 1) {
+          return null;
+        }
+        const sum = prior.reduce((total, point) => total + point.close, 0);
+        return sum / prior.length;
+      }
+
+      if (config.maType === "exponential") {
+        const ema = computeEma(points, windowSize);
+        for (let i = ema.length - 1; i >= 0; i -= 1) {
+          if (ema[i] !== null) {
+            return ema[i];
+          }
+        }
+        return null;
+      }
+
+      if (config.maType === "least_squares") {
+        const prior = points.slice(-(windowSize - 1));
+        if (prior.length < windowSize - 1) {
+          return null;
+        }
+        const n = windowSize;
+        const sumX = (n * (n - 1)) / 2;
+        if (sumX === 0) {
+          return null;
+        }
+        let sumY = 0;
+        let sumXY = 0;
+        for (let offset = 0; offset < prior.length; offset += 1) {
+          const value = prior[offset].close;
+          sumY += value;
+          sumXY += offset * value;
+        }
+        return sumY - ((n * sumXY) / sumX);
+      }
+
+      return null;
     }
 
     function computeStats(equitySeries, startingEquity) {
@@ -2141,6 +2209,7 @@
         renderChartRange(config);
 
         const latest = points[points.length - 1];
+        const sellBelow = computeSellBelow(points, config);
         const suggestion = config.delta <= 0
           ? { termDays: 0, estSurvival: 0, rawSurvival: 0 }
           : chooseSuggestedTerm(points, simulation.smaSeries, simulation.signalSeries, config.maType, points.length - 1, config.survivalThreshold, config.delta, simulation.survivalCalibration, config.maxTerm);
@@ -2152,6 +2221,7 @@
         metricRegimeEl.textContent = simulation.currentRegime;
         metricSuggestedTermEl.textContent = suggestion.termDays > 0 ? (String(suggestion.termDays) + " days") : "No sale";
         metricSuggestedInvestmentEl.textContent = simulation.currentInvestmentLabel;
+        metricSellBelowEl.textContent = sellBelow === null ? "--" : formatMoneyCents(sellBelow);
         metricExpirationsEl.textContent = String(simulation.expirations);
         metricForcedSalesEl.textContent = String(simulation.forcedSales);
         metricCalloutsEl.textContent = String(simulation.callouts) + " | " + formatMoney(simulation.calloutLossDollars);
@@ -2174,6 +2244,7 @@
         metricRegimeEl.textContent = "--";
         metricSuggestedTermEl.textContent = "--";
         metricSuggestedInvestmentEl.textContent = "--";
+        metricSellBelowEl.textContent = "--";
         metricExpirationsEl.textContent = "--";
         metricForcedSalesEl.textContent = "--";
         metricCalloutsEl.textContent = "--";
