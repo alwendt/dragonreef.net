@@ -317,7 +317,10 @@
               <select id="ma-type-input" aria-label="Moving average type">
                 <option value="simple">Simple</option>
                 <option value="exponential">Exponential</option>
+                <option value="ema_50_100">EMA N/2N Crossover</option>
                 <option value="least_squares">Least Squares Slope</option>
+                <option value="exp_weighted_least_squares">Exp Weighted LS Slope</option>
+                <option value="cosine_weighted_least_squares">Cosine Weighted LS Slope</option>
                 <option value="least_squares_predicted">Least Squares Predicted</option>
                 <option value="quadratic_least_squares">Quadratic Least Squares</option>
               </select>
@@ -378,28 +381,20 @@
           <div class="metric-value" id="metric-sell-below">--</div>
         </div>
         <div class="metric-card">
-          <div class="metric-label">Expirations</div>
-          <div class="metric-value" id="metric-expirations">--</div>
-        </div>
-        <div class="metric-card">
-          <div class="metric-label">Forced Buybacks</div>
-          <div class="metric-value" id="metric-forced-sales">--</div>
-        </div>
-        <div class="metric-card">
-          <div class="metric-label">Callouts | ITM Loss</div>
-          <div class="metric-value" id="metric-callouts">--</div>
-        </div>
-        <div class="metric-card">
           <div class="metric-label">Expired OTM</div>
           <div class="metric-value" id="metric-expired-otm">--</div>
         </div>
         <div class="metric-card">
-          <div class="metric-label">Calls By Term</div>
-          <div class="metric-value small" id="metric-term-breakdown">--</div>
+          <div class="metric-label">Bought Back</div>
+          <div class="metric-value" id="metric-forced-sales">--</div>
         </div>
         <div class="metric-card">
-          <div class="metric-label">Call Layer P&L</div>
-          <div class="metric-value" id="metric-call-layer-pnl">--</div>
+          <div class="metric-label">Assigned</div>
+          <div class="metric-value" id="metric-callouts">--</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Calls By Term</div>
+          <div class="metric-value small" id="metric-term-breakdown">--</div>
         </div>
         <div class="metric-card">
           <div class="metric-label">% Time In Market</div>
@@ -444,12 +439,10 @@
     const metricSuggestedTermEl = document.getElementById("metric-suggested-term");
     const metricSuggestedInvestmentEl = document.getElementById("metric-suggested-investment");
     const metricSellBelowEl = document.getElementById("metric-sell-below");
-    const metricExpirationsEl = document.getElementById("metric-expirations");
     const metricForcedSalesEl = document.getElementById("metric-forced-sales");
     const metricCalloutsEl = document.getElementById("metric-callouts");
     const metricExpiredOtmEl = document.getElementById("metric-expired-otm");
     const metricTermBreakdownEl = document.getElementById("metric-term-breakdown");
-    const metricCallLayerPnlEl = document.getElementById("metric-call-layer-pnl");
     const metricTimeInMarketEl = document.getElementById("metric-time-in-market");
     const metricBracketTransitionsEl = document.getElementById("metric-bracket-transitions");
     const DEFAULT_SMA_WINDOW = 120;
@@ -541,8 +534,17 @@
       if (normalized === "ema" || normalized === "exponential") {
         return "exponential";
       }
+      if (normalized === "ema_50_100" || normalized === "ema-50-100" || normalized === "ema 50/100" || normalized === "ema crossover" || normalized === "ema_cross" || normalized === "emac") {
+        return "ema_50_100";
+      }
       if (normalized === "least_squares" || normalized === "least-squares" || normalized === "least squares" || normalized === "ls") {
         return "least_squares";
+      }
+      if (normalized === "exp_weighted_least_squares" || normalized === "exp-weighted-least-squares" || normalized === "exponentially weighted least squares" || normalized === "weighted least squares" || normalized === "ewls") {
+        return "exp_weighted_least_squares";
+      }
+      if (normalized === "cosine_weighted_least_squares" || normalized === "cosine-weighted-least-squares" || normalized === "cosine weighted least squares" || normalized === "hann least squares" || normalized === "cwls") {
+        return "cosine_weighted_least_squares";
       }
       if (normalized === "least_squares_predicted" || normalized === "least-squares-predicted" || normalized === "least squares predicted" || normalized === "lsp") {
         return "least_squares_predicted";
@@ -554,7 +556,7 @@
     }
 
     function isLeastSquaresType(type) {
-      return type === "least_squares" || type === "least_squares_predicted" || type === "quadratic_least_squares";
+      return type === "least_squares" || type === "exp_weighted_least_squares" || type === "cosine_weighted_least_squares" || type === "least_squares_predicted" || type === "quadratic_least_squares";
     }
 
     function isQuadraticLeastSquaresType(type) {
@@ -565,16 +567,37 @@
       return type === "least_squares_predicted" || type === "quadratic_least_squares";
     }
 
+    function isZeroLineSignalType(type) {
+      return type === "least_squares" || type === "exp_weighted_least_squares" || type === "cosine_weighted_least_squares" || type === "ema_50_100";
+    }
+
     function getMaType() {
       return normalizeMaType(getParamValue(["MA_TYPE", "ma_type", "MATYPE", "matype", "TYPE", "type"]) || DEFAULT_MA_TYPE);
+    }
+
+    function emaCrossoverFastWindow(window) {
+      return Math.max(2, Math.round(window));
+    }
+
+    function emaCrossoverSlowWindow(window) {
+      return emaCrossoverFastWindow(window) * 2;
     }
 
     function maLabel(type, window) {
       if (type === "exponential") {
         return "EMA " + window;
       }
+      if (type === "ema_50_100") {
+        return "EMA " + emaCrossoverFastWindow(window) + "/" + emaCrossoverSlowWindow(window) + " Crossover";
+      }
       if (type === "least_squares") {
         return "Least Squares Slope " + window;
+      }
+      if (type === "exp_weighted_least_squares") {
+        return "Exp Weighted LS Slope " + window;
+      }
+      if (type === "cosine_weighted_least_squares") {
+        return "Cosine Weighted LS Slope " + window;
       }
       if (type === "least_squares_predicted") {
         return "Least Squares Predicted " + window;
@@ -585,12 +608,21 @@
       return "SMA " + window;
     }
 
-    function maName(type) {
+    function maName(type, window) {
       if (type === "exponential") {
         return "exponential moving average";
       }
+      if (type === "ema_50_100") {
+        return "EMA " + emaCrossoverFastWindow(window) + "/" + emaCrossoverSlowWindow(window) + " crossover";
+      }
       if (type === "least_squares") {
         return "least-squares slope";
+      }
+      if (type === "exp_weighted_least_squares") {
+        return "exponentially weighted least-squares slope";
+      }
+      if (type === "cosine_weighted_least_squares") {
+        return "cosine-weighted least-squares slope";
       }
       if (type === "least_squares_predicted") {
         return "least-squares predicted trend";
@@ -602,6 +634,15 @@
     }
 
     function signalLabel(type) {
+      if (type === "ema_50_100") {
+        return "EMA crossover spread";
+      }
+      if (type === "exp_weighted_least_squares") {
+        return "Exp weighted LS slope";
+      }
+      if (type === "cosine_weighted_least_squares") {
+        return "Cosine weighted LS slope";
+      }
       if (type === "least_squares_predicted") {
         return "Least Squares tomorrow forecast";
       }
@@ -609,7 +650,17 @@
     }
 
     function signalUnit(type) {
-      return isPredictedLeastSquaresType(type) ? "" : " $/day";
+      if (type === "ema_50_100") {
+        return "";
+      }
+      return isPredictedLeastSquaresType(type) ? "" : "% ann.";
+    }
+
+    function normalizeSlopeSignal(slope, fittedValue) {
+      if (!Number.isFinite(slope) || !Number.isFinite(fittedValue) || Math.abs(fittedValue) <= 1e-12) {
+        return null;
+      }
+      return (slope / fittedValue) * DAYS_PER_YEAR * 100;
     }
 
     function getSurvivalThreshold() {
@@ -723,6 +774,20 @@
       return ema;
     }
 
+    function computeEmaCrossover(points, windowSize) {
+      const fastWindow = emaCrossoverFastWindow(windowSize);
+      const slowWindow = emaCrossoverSlowWindow(windowSize);
+      const fastSeries = computeEma(points, fastWindow);
+      const slowSeries = computeEma(points, slowWindow);
+      const spreadSeries = new Array(points.length).fill(null);
+      for (let i = 0; i < points.length; i += 1) {
+        if (fastSeries[i] !== null && slowSeries[i] !== null) {
+          spreadSeries[i] = fastSeries[i] - slowSeries[i];
+        }
+      }
+      return { fastSeries, slowSeries, spreadSeries };
+    }
+
     function computeLeastSquares(points, windowSize) {
       const fittedSeries = new Array(points.length).fill(null);
       const slopeSeries = new Array(points.length).fill(null);
@@ -745,8 +810,60 @@
         }
         const slope = ((n * sumXY) - (sumX * sumY)) / denominator;
         const intercept = (sumY - (slope * sumX)) / n;
-        slopeSeries[i] = slope;
         fittedSeries[i] = intercept + (slope * (windowSize - 1));
+        slopeSeries[i] = normalizeSlopeSignal(slope, fittedSeries[i]);
+        forecastSeries[i] = intercept + (slope * windowSize);
+      }
+      return { fittedSeries, slopeSeries, forecastSeries };
+    }
+
+    function computeExpWeightedLeastSquares(points, windowSize) {
+      return computeWeightedLeastSquares(points, windowSize, (offset) => {
+        const halfLife = Math.max(1, windowSize / 2);
+        const decay = Math.pow(0.5, 1 / halfLife);
+        const age = windowSize - 1 - offset;
+        return Math.pow(decay, age);
+      });
+    }
+
+    function computeCosineWeightedLeastSquares(points, windowSize) {
+      return computeWeightedLeastSquares(points, windowSize, (offset) => {
+        if (windowSize <= 1) {
+          return 1;
+        }
+        const age = windowSize - 1 - offset;
+        return 0.5 * (1 + Math.cos(Math.PI * age / (windowSize - 1)));
+      });
+    }
+
+    function computeWeightedLeastSquares(points, windowSize, weightForOffset) {
+      const fittedSeries = new Array(points.length).fill(null);
+      const slopeSeries = new Array(points.length).fill(null);
+      const forecastSeries = new Array(points.length).fill(null);
+
+      for (let i = windowSize - 1; i < points.length; i += 1) {
+        let sumW = 0;
+        let sumWX = 0;
+        let sumWX2 = 0;
+        let sumWY = 0;
+        let sumWXY = 0;
+        for (let offset = 0; offset < windowSize; offset += 1) {
+          const weight = weightForOffset(offset);
+          const y = points[i - windowSize + 1 + offset].close;
+          sumW += weight;
+          sumWX += weight * offset;
+          sumWX2 += weight * offset * offset;
+          sumWY += weight * y;
+          sumWXY += weight * offset * y;
+        }
+        const denominator = (sumW * sumWX2) - (sumWX * sumWX);
+        if (Math.abs(denominator) <= 1e-12) {
+          continue;
+        }
+        const slope = ((sumW * sumWXY) - (sumWX * sumWY)) / denominator;
+        const intercept = (sumWY - (slope * sumWX)) / sumW;
+        fittedSeries[i] = intercept + (slope * (windowSize - 1));
+        slopeSeries[i] = normalizeSlopeSignal(slope, fittedSeries[i]);
         forecastSeries[i] = intercept + (slope * windowSize);
       }
       return { fittedSeries, slopeSeries, forecastSeries };
@@ -804,8 +921,17 @@
       if (type === "exponential") {
         return computeEma(points, windowSize);
       }
+      if (type === "ema_50_100") {
+        return computeEmaCrossover(points, windowSize).slowSeries;
+      }
       if (type === "least_squares") {
         return computeLeastSquares(points, windowSize).fittedSeries;
+      }
+      if (type === "exp_weighted_least_squares") {
+        return computeExpWeightedLeastSquares(points, windowSize).fittedSeries;
+      }
+      if (type === "cosine_weighted_least_squares") {
+        return computeCosineWeightedLeastSquares(points, windowSize).fittedSeries;
       }
       if (type === "least_squares_predicted") {
         return computeLeastSquares(points, windowSize).fittedSeries;
@@ -819,6 +945,15 @@
     function computeSignalSeries(points, windowSize, type) {
       if (type === "least_squares") {
         return computeLeastSquares(points, windowSize).slopeSeries;
+      }
+      if (type === "exp_weighted_least_squares") {
+        return computeExpWeightedLeastSquares(points, windowSize).slopeSeries;
+      }
+      if (type === "cosine_weighted_least_squares") {
+        return computeCosineWeightedLeastSquares(points, windowSize).slopeSeries;
+      }
+      if (type === "ema_50_100") {
+        return computeEmaCrossover(points, windowSize).spreadSeries;
       }
       if (type === "least_squares_predicted") {
         return computeLeastSquares(points, windowSize).forecastSeries;
@@ -837,14 +972,14 @@
       if (isPredictedLeastSquaresType(type)) {
         return signalValue < price;
       }
-      return isLeastSquaresType(type) ? signalValue < 0 : price < signalValue;
+      return isZeroLineSignalType(type) ? signalValue < 0 : price < signalValue;
     }
 
     function isBuySignal(price, signalValue, type) {
       if (isPredictedLeastSquaresType(type)) {
         return signalValue > price;
       }
-      return isLeastSquaresType(type) ? signalValue > 0 : price > signalValue;
+      return isZeroLineSignalType(type) ? signalValue > 0 : price > signalValue;
     }
 
     function buildLeastSquaresFitSegments(points, windowSize) {
@@ -1229,6 +1364,9 @@
       if (isPredictedLeastSquaresType(config.maType)) {
         return signalLabel(config.maType) + " fell below close";
       }
+      if (config.maType === "ema_50_100") {
+        return "EMA " + emaCrossoverFastWindow(config.smaWindow) + " fell below EMA " + emaCrossoverSlowWindow(config.smaWindow);
+      }
       if (isLeastSquaresType(config.maType)) {
         return signalLabel(config.maType) + " turned negative";
       }
@@ -1238,6 +1376,9 @@
     function aboveMaReason(config) {
       if (isPredictedLeastSquaresType(config.maType)) {
         return signalLabel(config.maType) + " rose above close after delay";
+      }
+      if (config.maType === "ema_50_100") {
+        return "EMA " + emaCrossoverFastWindow(config.smaWindow) + " rose above EMA " + emaCrossoverSlowWindow(config.smaWindow) + " after delay";
       }
       if (isLeastSquaresType(config.maType)) {
         return signalLabel(config.maType) + " turned positive after delay";
@@ -1318,7 +1459,7 @@
     }
 
     function targetFractionForSignal(price, maValue, stdDev, signalValue, config, currentFraction) {
-      if (isLeastSquaresType(config.maType)) {
+      if (isLeastSquaresType(config.maType) || config.maType === "ema_50_100") {
         if (!hasTradeSignal(signalValue)) {
           return currentFraction === null ? 0 : currentFraction;
         }
@@ -1339,13 +1480,12 @@
       let currentRegime = "Invested";
       const equitySeries = [];
       let sales = 0;
-      let expirations = 0;
-      let forcedSales = 0;
-      let callouts = 0;
-      let expiredOtm = 0;
-      let calloutLossDollars = 0;
-      let callSalesDollars = 0;
-      let forcedPurchaseDollars = 0;
+      let expiredOtmCount = 0;
+      let expiredOtmPnl = 0;
+      let boughtBackCount = 0;
+      let boughtBackPnl = 0;
+      let assignedCount = 0;
+      let assignedPnl = 0;
       let investedDays = 0;
       let currentInvestmentLabel = "100%";
       let previousInvestedState = null;
@@ -1378,17 +1518,19 @@
         let justExited = false;
 
         if (invested && activeOption && activeOption.expirationIndex === i) {
+          const optionShares = activeOption.coveredShares;
+          const premiumDollars = optionShares * activeOption.premium;
           if (price > activeOption.strike) {
-            callouts += 1;
-            calloutLossDollars += shares * (price - activeOption.strike);
+            assignedCount += 1;
+            assignedPnl += premiumDollars + optionShares * activeOption.strike - optionShares * price;
           } else {
-            expiredOtm += 1;
+            expiredOtmCount += 1;
+            expiredOtmPnl += premiumDollars;
           }
           const settledEquity = cash + shares * price - shares * Math.max(0, price - activeOption.strike);
           shares = settledEquity / price;
           cash = 0;
           activeOption = null;
-          expirations += 1;
         }
 
         const suppressSaleAfterLoss = lastCompletedRoundTripLostMoney &&
@@ -1400,8 +1542,9 @@
         if (invested && hasSignal && isSellSignal(price, tradeSignal, config.maType) && !suppressSaleAfterLoss) {
           const optionValue = optionMarketValue(activeOption, price, i);
           if (activeOption) {
-            forcedSales += 1;
-            forcedPurchaseDollars += shares * optionValue;
+            const optionShares = activeOption.coveredShares;
+            boughtBackCount += 1;
+            boughtBackPnl += optionShares * activeOption.premium - optionShares * optionValue;
           }
           lastCompletedRoundTripSalePrice = price;
           lastCompletedRoundTripSaleIndex = i;
@@ -1454,11 +1597,12 @@
             const strike = findStrike(price, timeToExpiry, CASH_RATE, sigma, config.delta);
             const premium = callPrice(price, strike, timeToExpiry, CASH_RATE, sigma);
             cash += shares * premium;
-            callSalesDollars += shares * premium;
             activeOption = {
               strike,
               sigma,
-              expirationIndex
+              expirationIndex,
+              premium,
+              coveredShares: shares
             };
             sales += 1;
           }
@@ -1495,15 +1639,14 @@
         currentInvestmentLabel,
         survivalCalibration,
         sales,
-        expirations,
-        forcedSales,
-        callouts,
-        expiredOtm,
-        calloutLossDollars,
-        expiredOtmPct: sales > 0 ? (expiredOtm / sales) : 0,
+        expiredOtmCount,
+        expiredOtmPnl,
+        boughtBackCount,
+        boughtBackPnl,
+        assignedCount,
+        assignedPnl,
         termCounts,
         transitionCounts,
-        callLayerPnl: callSalesDollars - forcedPurchaseDollars,
         timeInMarket: points.length > 0 ? (investedDays / points.length) : 0,
         signalEvents
       };
@@ -1522,13 +1665,12 @@
       let actualFraction = null;
       let cooldownUntil = -1;
       let sales = 0;
-      let expirations = 0;
-      let forcedSales = 0;
-      let callouts = 0;
-      let expiredOtm = 0;
-      let calloutLossDollars = 0;
-      let callSalesDollars = 0;
-      let forcedPurchaseDollars = 0;
+      let expiredOtmCount = 0;
+      let expiredOtmPnl = 0;
+      let boughtBackCount = 0;
+      let boughtBackPnl = 0;
+      let assignedCount = 0;
+      let assignedPnl = 0;
       let allocatedFractionDays = 0;
       let currentRegime = "All Cash";
       let currentInvestmentLabel = "All Cash";
@@ -1552,14 +1694,15 @@
 
         if (activeOption && activeOption.expirationIndex === i) {
           const itmShares = activeOption.contracts * 100;
+          const premiumDollars = itmShares * activeOption.premium;
           if (price > activeOption.strike) {
-            callouts += activeOption.contracts;
-            calloutLossDollars += itmShares * (price - activeOption.strike);
+            assignedCount += activeOption.contracts;
+            assignedPnl += premiumDollars + itmShares * activeOption.strike - itmShares * price;
           } else {
-            expiredOtm += activeOption.contracts;
+            expiredOtmCount += activeOption.contracts;
+            expiredOtmPnl += premiumDollars;
           }
           cash -= itmShares * Math.max(0, price - activeOption.strike);
-          expirations += activeOption.contracts;
           activeOption = null;
         }
 
@@ -1615,8 +1758,8 @@
           const maxContracts = Math.floor(shares / 100);
           if (activeOption.contracts > maxContracts) {
             const reducedContracts = activeOption.contracts - maxContracts;
-            forcedSales += reducedContracts;
-            forcedPurchaseDollars += reducedContracts * 100 * optionValue;
+            boughtBackCount += reducedContracts;
+            boughtBackPnl += reducedContracts * 100 * activeOption.premium - reducedContracts * 100 * optionValue;
             cash -= reducedContracts * 100 * optionValue;
             activeOption.contracts = maxContracts;
             if (activeOption.contracts <= 0) {
@@ -1640,13 +1783,13 @@
             const strike = findStrike(price, timeToExpiry, CASH_RATE, sigma, config.delta);
             const premium = callPrice(price, strike, timeToExpiry, CASH_RATE, sigma);
             cash += coveredContracts * 100 * premium;
-            callSalesDollars += coveredContracts * 100 * premium;
             sales += coveredContracts;
             activeOption = {
               contracts: coveredContracts,
               strike,
               sigma,
-              expirationIndex
+              expirationIndex,
+              premium
             };
           }
         }
@@ -1666,15 +1809,14 @@
         currentInvestmentLabel,
         survivalCalibration,
         sales,
-        expirations,
-        forcedSales,
-        callouts,
-        expiredOtm,
-        calloutLossDollars,
-        expiredOtmPct: sales > 0 ? (expiredOtm / sales) : 0,
+        expiredOtmCount,
+        expiredOtmPnl,
+        boughtBackCount,
+        boughtBackPnl,
+        assignedCount,
+        assignedPnl,
         termCounts,
         transitionCounts,
-        callLayerPnl: callSalesDollars - forcedPurchaseDollars,
         timeInMarket: points.length > QCHART_START_INDEX ? (allocatedFractionDays / (points.length - QCHART_START_INDEX)) : 0,
         signalEvents
       };
@@ -1886,9 +2028,22 @@
       const ctx = document.getElementById("chart").getContext("2d");
       const labels = points.map((point) => point.date);
       const prices = points.map((point) => point.close);
+      const showTradingDayGrid = activeRange === "1M";
+      const tradingDayIndexByTime = new Map(labels.map((date, index) => [date.getTime(), index]));
       const roundedMaSeries = maSeries.map((value) => (value === null ? null : Number(value.toFixed(2))));
-      const roundedSignalSeries = isLeastSquaresType(config.maType)
-        ? signalSeries.map((value) => (value === null ? null : Number(value.toFixed(isPredictedLeastSquaresType(config.maType) ? 2 : 4))))
+      const signalDigits = isPredictedLeastSquaresType(config.maType) || isZeroLineSignalType(config.maType) ? 2 : 4;
+      const roundedSignalSeries = (isLeastSquaresType(config.maType) || config.maType === "ema_50_100")
+        ? signalSeries.map((value) => (value === null ? null : Number(value.toFixed(signalDigits))))
+        : [];
+      const emaFastSeries = config.maType === "ema_50_100"
+        ? maSeries.map((value, index) => (value === null || signalSeries[index] === null ? null : value + signalSeries[index]))
+        : [];
+      const roundedEmaFastSeries = emaFastSeries.map((value) => (value === null ? null : Number(value.toFixed(2))));
+      const emaFastAboveSeries = config.maType === "ema_50_100"
+        ? emaFastSeries.map((value, index) => (value !== null && maSeries[index] !== null && value >= maSeries[index] ? Number(value.toFixed(2)) : null))
+        : [];
+      const emaFastBelowSeries = config.maType === "ema_50_100"
+        ? emaFastSeries.map((value, index) => (value !== null && maSeries[index] !== null && value < maSeries[index] ? Number(value.toFixed(2)) : null))
         : [];
       const leastSquaresSegments = config.maType === "least_squares"
         ? buildLeastSquaresFitSegments(points, config.smaWindow)
@@ -1929,11 +2084,65 @@
         }
       ];
 
-      if (!isLeastSquaresType(config.maType)) {
+      if (!isLeastSquaresType(config.maType) && config.maType !== "ema_50_100") {
         datasets.push({
           label: maLabel(config.maType, config.smaWindow),
           data: roundedMaSeries,
           borderColor: "#f2a154",
+          borderWidth: 2,
+          pointRadius: 0,
+          tension: 0.1,
+          yAxisID: "price"
+        });
+      }
+
+      if (config.maType === "ema_50_100") {
+        const emaSlowDatasetIndex = datasets.length;
+        const emaFastWindow = emaCrossoverFastWindow(config.smaWindow);
+        const emaSlowWindow = emaCrossoverSlowWindow(config.smaWindow);
+        datasets.push({
+          label: "EMA " + emaSlowWindow,
+          data: roundedMaSeries,
+          borderColor: "#d78b38",
+          borderWidth: 2,
+          pointRadius: 0,
+          tension: 0.1,
+          yAxisID: "price"
+        });
+        datasets.push({
+          label: "EMA " + emaFastWindow + " above EMA " + emaSlowWindow,
+          data: emaFastAboveSeries,
+          borderColor: "rgba(43, 147, 72, 0)",
+          backgroundColor: "rgba(43, 147, 72, 0.20)",
+          borderWidth: 0,
+          fill: {
+            target: emaSlowDatasetIndex
+          },
+          pointRadius: 0,
+          spanGaps: false,
+          tension: 0.1,
+          yAxisID: "price",
+          skipTooltip: true
+        });
+        datasets.push({
+          label: "EMA " + emaFastWindow + " below EMA " + emaSlowWindow,
+          data: emaFastBelowSeries,
+          borderColor: "rgba(196, 69, 54, 0)",
+          backgroundColor: "rgba(196, 69, 54, 0.20)",
+          borderWidth: 0,
+          fill: {
+            target: emaSlowDatasetIndex
+          },
+          pointRadius: 0,
+          spanGaps: false,
+          tension: 0.1,
+          yAxisID: "price",
+          skipTooltip: true
+        });
+        datasets.push({
+          label: "EMA " + emaFastWindow,
+          data: roundedEmaFastSeries,
+          borderColor: "#6d5dfc",
           borderWidth: 2,
           pointRadius: 0,
           tension: 0.1,
@@ -1965,7 +2174,7 @@
         });
         if (!isPredictedLeastSquaresType(config.maType)) {
           datasets.push({
-            label: "Zero slope",
+            label: "Zero annualized slope",
             data: labels.map(() => 0),
             borderColor: "rgba(109, 93, 252, 0.35)",
             borderDash: [6, 4],
@@ -2028,6 +2237,7 @@
               display: false
             },
             tooltip: {
+              filter: (context) => !context.dataset.skipTooltip,
               callbacks: {
                 title: (items) => {
                   if (!items.length) {
@@ -2062,7 +2272,7 @@
                     });
                   }
                   if (context.dataset.yAxisID === "slope") {
-                    return context.dataset.label + ": " + value.toFixed(4) + signalUnit(config.maType);
+                    return context.dataset.label + ": " + value.toFixed(2) + signalUnit(config.maType);
                   }
                   return context.dataset.label + ": " + value.toLocaleString(undefined, {
                     style: "currency",
@@ -2077,11 +2287,49 @@
           scales: {
             x: {
               type: "time",
+              afterBuildTicks: showTradingDayGrid ? (axis) => {
+                axis.ticks = labels.map((date) => ({
+                  value: date.getTime()
+                }));
+              } : undefined,
               time: {
-                unit: "month"
+                unit: showTradingDayGrid ? "day" : "month"
+              },
+              ticks: {
+                source: showTradingDayGrid ? "labels" : "auto",
+                autoSkip: !showTradingDayGrid,
+                maxRotation: 0,
+                callback: (value, index) => {
+                  const date = new Date(value);
+                  if (!showTradingDayGrid) {
+                    return date.toLocaleDateString(undefined, {
+                      month: "short",
+                      year: "numeric"
+                    });
+                  }
+                  const tradingDayIndex = tradingDayIndexByTime.get(date.getTime());
+                  if (tradingDayIndex === undefined) {
+                    return "";
+                  }
+                  if (tradingDayIndex === 0) {
+                    return date.toLocaleDateString(undefined, {
+                      month: "short",
+                      year: "numeric"
+                    });
+                  }
+                  const previousDate = labels[tradingDayIndex - 1] ? new Date(labels[tradingDayIndex - 1]) : null;
+                  const weekStart = new Date(date.getFullYear(), date.getMonth(), date.getDate() - ((date.getDay() + 6) % 7));
+                  const previousWeekStart = previousDate
+                    ? new Date(previousDate.getFullYear(), previousDate.getMonth(), previousDate.getDate() - ((previousDate.getDay() + 6) % 7))
+                    : null;
+                  if (previousWeekStart && weekStart.getTime() !== previousWeekStart.getTime()) {
+                    return String(date.getDate());
+                  }
+                  return "";
+                }
               },
               grid: {
-                color: "rgba(11, 26, 42, 0.06)"
+                color: showTradingDayGrid ? "rgba(120, 120, 120, 0.26)" : "rgba(11, 26, 42, 0.06)"
               }
             },
             price: {
@@ -2106,10 +2354,10 @@
             },
             slope: {
               type: "linear",
-              display: config.maType === "least_squares",
+              display: isZeroLineSignalType(config.maType) && config.maType !== "ema_50_100",
               position: "right",
               ticks: {
-                callback: (value) => Number(value).toFixed(2)
+                callback: (value) => config.maType === "ema_50_100" ? Number(value).toFixed(2) : Number(value).toFixed(0) + "%"
               },
               grid: {
                 drawOnChartArea: false
@@ -2222,12 +2470,10 @@
         metricSuggestedTermEl.textContent = suggestion.termDays > 0 ? (String(suggestion.termDays) + " days") : "No sale";
         metricSuggestedInvestmentEl.textContent = simulation.currentInvestmentLabel;
         metricSellBelowEl.textContent = sellBelow === null ? "--" : formatMoneyCents(sellBelow);
-        metricExpirationsEl.textContent = String(simulation.expirations);
-        metricForcedSalesEl.textContent = String(simulation.forcedSales);
-        metricCalloutsEl.textContent = String(simulation.callouts) + " | " + formatMoney(simulation.calloutLossDollars);
-        metricExpiredOtmEl.textContent = String(simulation.expiredOtm) + " | " + formatPercent(simulation.expiredOtmPct);
+        metricExpiredOtmEl.textContent = String(simulation.expiredOtmCount) + " | " + formatMoney(simulation.expiredOtmPnl);
+        metricForcedSalesEl.textContent = String(simulation.boughtBackCount) + " | " + formatMoney(simulation.boughtBackPnl);
+        metricCalloutsEl.textContent = String(simulation.assignedCount) + " | " + formatMoney(simulation.assignedPnl);
         metricTermBreakdownEl.textContent = formatTermBreakdown(simulation.termCounts);
-        metricCallLayerPnlEl.textContent = formatMoney(simulation.callLayerPnl);
         metricTimeInMarketEl.textContent = formatPercent(simulation.timeInMarket);
         metricBracketTransitionsEl.textContent = simulation.transitionCounts ? formatBracketTransitions(simulation.transitionCounts, config.buckets) : "--";
       } catch (error) {
@@ -2245,12 +2491,10 @@
         metricSuggestedTermEl.textContent = "--";
         metricSuggestedInvestmentEl.textContent = "--";
         metricSellBelowEl.textContent = "--";
-        metricExpirationsEl.textContent = "--";
         metricForcedSalesEl.textContent = "--";
         metricCalloutsEl.textContent = "--";
         metricExpiredOtmEl.textContent = "--";
         metricTermBreakdownEl.textContent = "--";
-        metricCallLayerPnlEl.textContent = "--";
         metricTimeInMarketEl.textContent = "--";
         metricBracketTransitionsEl.textContent = "--";
         setStatus("Could not load data for " + ticker + ".", true);
@@ -2263,7 +2507,7 @@
         document.title = ticker + " quantized covered call backtest";
         eyebrowEl.textContent = ticker + " quantized covered call backtest";
         headlineEl.textContent = ticker + " quantized strategy with " + maLabel(config.maType, config.smaWindow);
-        subheadEl.textContent = "Quantized 0/20/40/60/80/100% allocation using a " + maName(config.maType) + " +/- 1 standard-deviation band, with any decrease applied immediately and any increase delayed by " + config.delayDays + " trading days. Covered calls are sold only against fully covered 100-share lots. Simulation starts 300 trading days in with " + formatMoney(config.startingCapital) + ". Survival is empirically calibrated to historical expired-OTM outcomes.";
+        subheadEl.textContent = "Quantized 0/20/40/60/80/100% allocation using a " + maName(config.maType, config.smaWindow) + " +/- 1 standard-deviation band, with any decrease applied immediately and any increase delayed by " + config.delayDays + " trading days. Covered calls are sold only against fully covered 100-share lots. Simulation starts 300 trading days in with " + formatMoney(config.startingCapital) + ". Survival is empirically calibrated to historical expired-OTM outcomes.";
       } else {
         document.title = ticker + " covered call backtest";
         eyebrowEl.textContent = ticker + " covered call backtest";
@@ -2271,7 +2515,7 @@
         const termDescription = config.maxTerm === null
           ? "adaptive 20/15/10/5-day terms"
           : "adaptive terms capped at " + config.maxTerm + " days";
-        subheadEl.textContent = "Full-history backtest with " + formatPercent(config.delta) + " delta calls, " + termDescription + " driven by a " + formatPercent(config.survivalThreshold) + " empirically calibrated survival threshold, a " + config.delayDays + "-day cooldown after " + maName(config.maType) + " breakdowns, and 4% cash yield while out of market.";
+        subheadEl.textContent = "Full-history backtest with " + formatPercent(config.delta) + " delta calls, " + termDescription + " driven by a " + formatPercent(config.survivalThreshold) + " empirically calibrated survival threshold, a " + config.delayDays + "-day cooldown after " + maName(config.maType, config.smaWindow) + " breakdowns, and 4% cash yield while out of market.";
       }
       dataSourceEl.textContent = currentDataSource || ("Daily prices (" + symbol + ")");
       maLegendLabelEl.textContent = maLabel(config.maType, config.smaWindow);
