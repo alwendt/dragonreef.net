@@ -369,18 +369,6 @@
           <div class="metric-value" id="metric-regime">--</div>
         </div>
         <div class="metric-card">
-          <div class="metric-label">Suggested Term</div>
-          <div class="metric-value" id="metric-suggested-term">--</div>
-        </div>
-        <div class="metric-card">
-          <div class="metric-label">Suggested Investment</div>
-          <div class="metric-value" id="metric-suggested-investment">--</div>
-        </div>
-        <div class="metric-card">
-          <div class="metric-label">Sell Below</div>
-          <div class="metric-value" id="metric-sell-below">--</div>
-        </div>
-        <div class="metric-card">
           <div class="metric-label">Expired OTM</div>
           <div class="metric-value" id="metric-expired-otm">--</div>
         </div>
@@ -395,6 +383,18 @@
         <div class="metric-card">
           <div class="metric-label">Calls By Term</div>
           <div class="metric-value small" id="metric-term-breakdown">--</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Suggested Term</div>
+          <div class="metric-value" id="metric-suggested-term">--</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Suggested Investment</div>
+          <div class="metric-value" id="metric-suggested-investment">--</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Sell Below</div>
+          <div class="metric-value" id="metric-sell-below">--</div>
         </div>
         <div class="metric-card">
           <div class="metric-label">% Time In Market</div>
@@ -464,6 +464,7 @@
     let latestSignalEvents = [];
     let activeRange = "MAX";
     let activeRangeEndIndex = null;
+    let loadedTicker = "";
     let dragState = null;
 
     function setStatus(message, isError = false) {
@@ -1885,9 +1886,29 @@
 
       if (config.maType === "exponential") {
         const ema = computeEma(points, windowSize);
-        for (let i = ema.length - 1; i >= 0; i -= 1) {
+        for (let i = ema.length - 2; i >= 0; i -= 1) {
           if (ema[i] !== null) {
             return ema[i];
+          }
+        }
+        return null;
+      }
+
+      if (config.maType === "ema_50_100") {
+        const fastWindow = emaCrossoverFastWindow(windowSize);
+        const slowWindow = emaCrossoverSlowWindow(windowSize);
+        const crossover = computeEmaCrossover(points, windowSize);
+        for (let i = points.length - 2; i >= 0; i -= 1) {
+          const fast = crossover.fastSeries[i];
+          const slow = crossover.slowSeries[i];
+          if (fast !== null && slow !== null) {
+            const fastAlpha = 2 / (fastWindow + 1);
+            const slowAlpha = 2 / (slowWindow + 1);
+            const denominator = fastAlpha - slowAlpha;
+            if (Math.abs(denominator) <= 1e-12) {
+              return null;
+            }
+            return (((1 - slowAlpha) * slow) - ((1 - fastAlpha) * fast)) / denominator;
           }
         }
         return null;
@@ -1970,6 +1991,29 @@
         return points.length - 1;
       }
       return Math.max(0, Math.min(points.length - 1, activeRangeEndIndex));
+    }
+
+    function visibleRangeEndDate() {
+      if (!latestPoints.length || activeRange === "MAX") {
+        return null;
+      }
+      return latestPoints[clampRangeEndIndex(latestPoints)].date;
+    }
+
+    function indexAtOrBeforeDate(points, targetDate) {
+      if (!points.length || !targetDate) {
+        return null;
+      }
+      let bestIndex = 0;
+      const targetTime = targetDate.getTime();
+      for (let i = 0; i < points.length; i += 1) {
+        if (points[i].date.getTime() <= targetTime) {
+          bestIndex = i;
+        } else {
+          break;
+        }
+      }
+      return bestIndex;
     }
 
     function sliceSeriesByRange(points, maSeries, signalSeries, equitySeries, signalEvents, range) {
@@ -2434,8 +2478,9 @@
       };
     }
 
-    async function loadData(ticker, config) {
+    async function loadData(ticker, config, preserveRange = false) {
       const dataUrl = buildDataUrl(ticker);
+      const preservedEndDate = preserveRange ? visibleRangeEndDate() : null;
       setStatus("Fetching " + ticker + "...");
       try {
         const { text, source } = await fetchCsv(dataUrl);
@@ -2453,7 +2498,10 @@
         latestSignalSeries = simulation.signalSeries || [];
         latestEquitySeries = simulation.equitySeries;
         latestSignalEvents = simulation.signalEvents || [];
-        activeRangeEndIndex = null;
+        activeRangeEndIndex = preservedEndDate === null
+          ? null
+          : indexAtOrBeforeDate(points, preservedEndDate);
+        loadedTicker = ticker;
         renderChartRange(config);
 
         const latest = points[points.length - 1];
@@ -2567,13 +2615,14 @@
       const nextTicker = normalizeTicker(tickerInput.value);
       const nextConfig = readFormConfig();
       const target = buildTargetUrl(nextTicker, nextConfig);
+      const preserveRange = nextTicker === loadedTicker;
       if (pushHistory) {
         window.location.assign(target);
         return;
       }
       window.history.replaceState({}, "", target);
       updateCopy(nextTicker, nextConfig);
-      loadData(nextTicker, nextConfig);
+      loadData(nextTicker, nextConfig, preserveRange);
     }
 
     const ticker = getTicker();
