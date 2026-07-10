@@ -258,6 +258,40 @@
       font-weight: 600;
     }
 
+    .metric-secondary {
+      margin-top: 3px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.35;
+      font-weight: 600;
+    }
+
+    .metric-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+      line-height: 1.35;
+      font-weight: 600;
+    }
+
+    .metric-table th,
+    .metric-table td {
+      padding: 2px 0;
+    }
+
+    .metric-table th {
+      color: var(--muted);
+      font-weight: 600;
+      text-align: left;
+    }
+
+    .metric-table td {
+      color: var(--ink);
+      font-family: "SFMono-Regular", "Cascadia Mono", "Liberation Mono", Menlo, Consolas, monospace;
+      font-variant-numeric: tabular-nums;
+      text-align: right;
+    }
+
     .status {
       font-size: 13px;
       color: var(--muted);
@@ -317,7 +351,7 @@
               <select id="ma-type-input" aria-label="Moving average type">
                 <option value="simple">Simple</option>
                 <option value="exponential">Exponential</option>
-                <option value="ema_50_100">EMA N/2N Crossover</option>
+                <option value="ema_n22n">EMA N/2N Crossover</option>
                 <option value="least_squares">Least Squares Slope</option>
                 <option value="exp_weighted_least_squares">Exp Weighted LS Slope</option>
                 <option value="cosine_weighted_least_squares">Cosine Weighted LS Slope</option>
@@ -342,6 +376,7 @@
           <button type="button" class="secondary" data-range="3Y">3Y</button>
           <button type="button" class="secondary" data-range="5Y">5Y</button>
           <button type="button" class="secondary" data-range="MAX">Max</button>
+          <button type="button" class="secondary" id="download-yearly-csv">Year CSV</button>
         </div>
         <canvas id="chart"></canvas>
       </div>
@@ -365,8 +400,12 @@
           <div class="metric-value" id="metric-maxdd">--</div>
         </div>
         <div class="metric-card">
-          <div class="metric-label">Regime</div>
-          <div class="metric-value" id="metric-regime">--</div>
+          <div class="metric-label">Position</div>
+          <div class="metric-value" id="metric-position">--</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Current</div>
+          <div class="metric-value small" id="metric-current">--</div>
         </div>
         <div class="metric-card">
           <div class="metric-label">Expired OTM</div>
@@ -387,14 +426,6 @@
         <div class="metric-card">
           <div class="metric-label">Suggested Term</div>
           <div class="metric-value" id="metric-suggested-term">--</div>
-        </div>
-        <div class="metric-card">
-          <div class="metric-label">Suggested Investment</div>
-          <div class="metric-value" id="metric-suggested-investment">--</div>
-        </div>
-        <div class="metric-card">
-          <div class="metric-label">Sell Below</div>
-          <div class="metric-value" id="metric-sell-below">--</div>
         </div>
         <div class="metric-card">
           <div class="metric-label">% Time In Market</div>
@@ -428,6 +459,7 @@
     const optionDaysInput = document.getElementById("option-days-input");
     const maxTermInput = document.getElementById("max-term-input");
     const rangeControlsEl = document.getElementById("range-controls");
+    const downloadYearlyCsvEl = document.getElementById("download-yearly-csv");
     const maLegendEl = document.getElementById("ma-legend");
     const maLegendLabelEl = document.getElementById("ma-legend-label");
     const slopeLegendEl = document.getElementById("slope-legend");
@@ -435,10 +467,9 @@
     const metricFinalEl = document.getElementById("metric-final");
     const metricCagrEl = document.getElementById("metric-cagr");
     const metricMaxDdEl = document.getElementById("metric-maxdd");
-    const metricRegimeEl = document.getElementById("metric-regime");
+    const metricPositionEl = document.getElementById("metric-position");
+    const metricCurrentEl = document.getElementById("metric-current");
     const metricSuggestedTermEl = document.getElementById("metric-suggested-term");
-    const metricSuggestedInvestmentEl = document.getElementById("metric-suggested-investment");
-    const metricSellBelowEl = document.getElementById("metric-sell-below");
     const metricForcedSalesEl = document.getElementById("metric-forced-sales");
     const metricCalloutsEl = document.getElementById("metric-callouts");
     const metricExpiredOtmEl = document.getElementById("metric-expired-otm");
@@ -535,8 +566,8 @@
       if (normalized === "ema" || normalized === "exponential") {
         return "exponential";
       }
-      if (normalized === "ema_50_100" || normalized === "ema-50-100" || normalized === "ema 50/100" || normalized === "ema crossover" || normalized === "ema_cross" || normalized === "emac") {
-        return "ema_50_100";
+      if (normalized === "ema_n22n" || normalized === "ema crossover" || normalized === "ema_cross" || normalized === "emac") {
+        return "ema_n22n";
       }
       if (normalized === "least_squares" || normalized === "least-squares" || normalized === "least squares" || normalized === "ls") {
         return "least_squares";
@@ -569,7 +600,7 @@
     }
 
     function isZeroLineSignalType(type) {
-      return type === "least_squares" || type === "exp_weighted_least_squares" || type === "cosine_weighted_least_squares" || type === "ema_50_100";
+      return type === "least_squares" || type === "exp_weighted_least_squares" || type === "cosine_weighted_least_squares" || type === "ema_n22n";
     }
 
     function getMaType() {
@@ -588,7 +619,7 @@
       if (type === "exponential") {
         return "EMA " + window;
       }
-      if (type === "ema_50_100") {
+      if (type === "ema_n22n") {
         return "EMA " + emaCrossoverFastWindow(window) + "/" + emaCrossoverSlowWindow(window) + " Crossover";
       }
       if (type === "least_squares") {
@@ -613,7 +644,7 @@
       if (type === "exponential") {
         return "exponential moving average";
       }
-      if (type === "ema_50_100") {
+      if (type === "ema_n22n") {
         return "EMA " + emaCrossoverFastWindow(window) + "/" + emaCrossoverSlowWindow(window) + " crossover";
       }
       if (type === "least_squares") {
@@ -635,7 +666,7 @@
     }
 
     function signalLabel(type) {
-      if (type === "ema_50_100") {
+      if (type === "ema_n22n") {
         return "EMA crossover spread";
       }
       if (type === "exp_weighted_least_squares") {
@@ -651,7 +682,7 @@
     }
 
     function signalUnit(type) {
-      if (type === "ema_50_100") {
+      if (type === "ema_n22n") {
         return "";
       }
       return isPredictedLeastSquaresType(type) ? "" : "% ann.";
@@ -922,7 +953,7 @@
       if (type === "exponential") {
         return computeEma(points, windowSize);
       }
-      if (type === "ema_50_100") {
+      if (type === "ema_n22n") {
         return computeEmaCrossover(points, windowSize).slowSeries;
       }
       if (type === "least_squares") {
@@ -953,7 +984,7 @@
       if (type === "cosine_weighted_least_squares") {
         return computeCosineWeightedLeastSquares(points, windowSize).slopeSeries;
       }
-      if (type === "ema_50_100") {
+      if (type === "ema_n22n") {
         return computeEmaCrossover(points, windowSize).spreadSeries;
       }
       if (type === "least_squares_predicted") {
@@ -963,6 +994,32 @@
         return computeQuadraticLeastSquares(points, windowSize).forecastSeries;
       }
       return computeMa(points, windowSize, type);
+    }
+
+    function emaCrossoverSignalAfterClose(price, longEma, spread, windowSize) {
+      if (![price, longEma, spread].every(Number.isFinite)) {
+        return null;
+      }
+      const fastWindow = emaCrossoverFastWindow(windowSize);
+      const slowWindow = emaCrossoverSlowWindow(windowSize);
+      const fastAlpha = 2 / (fastWindow + 1);
+      const slowAlpha = 2 / (slowWindow + 1);
+      const shortEma = (fastAlpha * price) + ((1 - fastAlpha) * (longEma + spread));
+      const updatedLongEma = (slowAlpha * price) + ((1 - slowAlpha) * longEma);
+      return shortEma - updatedLongEma;
+    }
+
+    function computeTradeSignalSeries(points, maSeries, signalSeries, config) {
+      if (config.maType !== "ema_n22n") {
+        return signalSeries;
+      }
+      return signalSeries.map((signal, index) => {
+        const longEma = maSeries[index];
+        if (longEma === null || signal === null) {
+          return null;
+        }
+        return emaCrossoverSignalAfterClose(points[index].close, longEma, signal, config.smaWindow);
+      });
     }
 
     function hasTradeSignal(signalValue) {
@@ -1365,7 +1422,7 @@
       if (isPredictedLeastSquaresType(config.maType)) {
         return signalLabel(config.maType) + " fell below close";
       }
-      if (config.maType === "ema_50_100") {
+      if (config.maType === "ema_n22n") {
         return "EMA " + emaCrossoverFastWindow(config.smaWindow) + " fell below EMA " + emaCrossoverSlowWindow(config.smaWindow);
       }
       if (isLeastSquaresType(config.maType)) {
@@ -1378,7 +1435,7 @@
       if (isPredictedLeastSquaresType(config.maType)) {
         return signalLabel(config.maType) + " rose above close after delay";
       }
-      if (config.maType === "ema_50_100") {
+      if (config.maType === "ema_n22n") {
         return "EMA " + emaCrossoverFastWindow(config.smaWindow) + " rose above EMA " + emaCrossoverSlowWindow(config.smaWindow) + " after delay";
       }
       if (isLeastSquaresType(config.maType)) {
@@ -1415,6 +1472,28 @@
         return "0%";
       }
       return Math.round(fraction * 100) + "%";
+    }
+
+    function escapeHtml(value) {
+      return String(value)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+    }
+
+    function formatPositionMetric(currentInvestmentLabel, currentRegime) {
+      const primary = currentInvestmentLabel || currentRegime || "--";
+      const regime = currentRegime || "";
+      const primaryLower = primary.toLowerCase();
+      const regimeLower = regime.toLowerCase();
+      const redundant = !regime ||
+        primaryLower === regimeLower ||
+        (primary === "100%" && regimeLower === "invested") ||
+        regimeLower === (primaryLower + " invested");
+      const secondary = redundant ? "" : '<div class="metric-secondary">' + escapeHtml(regime) + "</div>";
+      return escapeHtml(primary) + secondary;
     }
 
     function bucketFractions(bucketCount) {
@@ -1460,7 +1539,7 @@
     }
 
     function targetFractionForSignal(price, maValue, stdDev, signalValue, config, currentFraction) {
-      if (isLeastSquaresType(config.maType) || config.maType === "ema_50_100") {
+      if (isLeastSquaresType(config.maType) || config.maType === "ema_n22n") {
         if (!hasTradeSignal(signalValue)) {
           return currentFraction === null ? 0 : currentFraction;
         }
@@ -1472,7 +1551,8 @@
       function simulateStrategy(points, config) {
       const maSeries = computeMa(points, config.smaWindow, config.maType);
       const signalSeries = computeSignalSeries(points, config.smaWindow, config.maType);
-      const survivalCalibration = buildSurvivalCalibration(points, maSeries, signalSeries, config.maType, config.delta);
+      const tradeSignalSeries = computeTradeSignalSeries(points, maSeries, signalSeries, config);
+      const survivalCalibration = buildSurvivalCalibration(points, maSeries, tradeSignalSeries, config.maType, config.delta);
       let invested = true;
       let shares = config.startingCapital / points[0].close;
       let cash = 0;
@@ -1514,7 +1594,7 @@
       for (let i = 0; i < points.length; i += 1) {
         const price = points[i].close;
         const movingAverage = maSeries[i];
-        const tradeSignal = signalSeries[i];
+        const tradeSignal = tradeSignalSeries[i];
         const hasSignal = hasTradeSignal(tradeSignal);
         let justExited = false;
 
@@ -1589,7 +1669,7 @@
         if (invested && !activeOption) {
           const suggestion = config.delta <= 0
             ? { termDays: 0, estSurvival: 0, rawSurvival: 0 }
-            : chooseSuggestedTerm(points, maSeries, signalSeries, config.maType, i, config.survivalThreshold, config.delta, survivalCalibration, config.maxTerm);
+            : chooseSuggestedTerm(points, maSeries, tradeSignalSeries, config.maType, i, config.survivalThreshold, config.delta, survivalCalibration, config.maxTerm);
           termCounts[suggestion.termDays] += 1;
           if (suggestion.termDays > 0) {
             const expirationIndex = Math.min(i + suggestion.termDays, points.length - 1);
@@ -1624,7 +1704,7 @@
       const latestIndex = points.length - 1;
       const latestMa = latestIndex >= 0 ? maSeries[latestIndex] : null;
       const latestPrice = latestIndex >= 0 ? points[latestIndex].close : 0;
-      const latestSignal = latestIndex >= 0 ? signalSeries[latestIndex] : null;
+      const latestSignal = latestIndex >= 0 ? tradeSignalSeries[latestIndex] : null;
       if (!invested && hasTradeSignal(latestSignal) && isBuySignal(latestPrice, latestSignal, config.maType) && latestIndex < reentryIndex) {
         currentInvestmentLabel = "holding at all cash";
       } else {
@@ -1635,6 +1715,7 @@
         startingEquity: config.startingCapital,
         smaSeries: maSeries,
         signalSeries,
+        tradeSignalSeries,
         equitySeries,
         currentRegime,
         currentInvestmentLabel,
@@ -1656,7 +1737,8 @@
     function simulateQuantizedStrategy(points, config) {
       const maSeries = computeMa(points, config.smaWindow, config.maType);
       const signalSeries = computeSignalSeries(points, config.smaWindow, config.maType);
-      const survivalCalibration = buildSurvivalCalibration(points, maSeries, signalSeries, config.maType, config.delta);
+      const tradeSignalSeries = computeTradeSignalSeries(points, maSeries, signalSeries, config);
+      const survivalCalibration = buildSurvivalCalibration(points, maSeries, tradeSignalSeries, config.maType, config.delta);
       const stdSeries = computeCloseStd(points, config.smaWindow);
       const buckets = bucketFractions(config.buckets);
       const equitySeries = new Array(points.length).fill(null);
@@ -1707,7 +1789,7 @@
           activeOption = null;
         }
 
-        const rawFraction = quantizeFraction(targetFractionForSignal(price, maSeries[i], stdSeries[i], signalSeries[i], config, actualFraction), buckets);
+        const rawFraction = quantizeFraction(targetFractionForSignal(price, maSeries[i], stdSeries[i], tradeSignalSeries[i], config, actualFraction), buckets);
         const suppressSaleAfterLoss = lastCompletedRoundTripLostMoney &&
           lastCompletedRoundTripSalePrice !== null &&
           lastCompletedRoundTripSaleIndex !== null &&
@@ -1775,7 +1857,7 @@
 
         const coveredContracts = Math.floor(shares / 100);
         if (!activeOption) {
-          const termDays = config.delta <= 0 ? 0 : chooseSuggestedTerm(points, maSeries, signalSeries, config.maType, i, config.survivalThreshold, config.delta, survivalCalibration, config.maxTerm).termDays;
+          const termDays = config.delta <= 0 ? 0 : chooseSuggestedTerm(points, maSeries, tradeSignalSeries, config.maType, i, config.survivalThreshold, config.delta, survivalCalibration, config.maxTerm).termDays;
           termCounts[termDays] += coveredContracts > 0 ? coveredContracts : 1;
           if (termDays > 0 && coveredContracts > 0) {
             const expirationIndex = Math.min(i + termDays, points.length - 1);
@@ -1805,6 +1887,7 @@
         startingEquity: config.startingCapital,
         smaSeries: maSeries,
         signalSeries,
+        tradeSignalSeries,
         equitySeries,
         currentRegime,
         currentInvestmentLabel,
@@ -1869,7 +1952,163 @@
       return (value * 100).toFixed(2) + "%";
     }
 
-    function computeSellBelow(points, config) {
+    function csvCell(value) {
+      const text = String(value ?? "");
+      return /[",\n\r]/.test(text) ? '"' + text.replace(/"/g, '""') + '"' : text;
+    }
+
+    function yearlyPerformanceRows(points, equitySeries, startingBalance) {
+      const years = new Map();
+      for (let i = 0; i < points.length; i += 1) {
+        const equity = equitySeries[i];
+        if (equity === null || !Number.isFinite(equity)) {
+          continue;
+        }
+        const year = points[i].date.getFullYear();
+        if (!years.has(year)) {
+          years.set(year, {
+            year,
+            ending: equity
+          });
+        } else {
+          years.get(year).ending = equity;
+        }
+      }
+
+      let priorEnding = Number.isFinite(startingBalance) ? startingBalance : null;
+      return Array.from(years.values())
+        .sort((left, right) => left.year - right.year)
+        .map((row) => {
+          const beginning = priorEnding === null ? row.ending : priorEnding;
+          priorEnding = row.ending;
+          return {
+            year: row.year,
+            beginning,
+            ending: row.ending,
+            percentChange: beginning === 0 ? 0 : (row.ending / beginning) - 1
+          };
+        });
+    }
+
+    function downloadText(filename, text, mimeType) {
+      const blob = new Blob([text], { type: mimeType });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    }
+
+    function downloadYearlyPerformanceCsv() {
+      if (!latestPoints.length || !latestEquitySeries.length) {
+        setStatus("No simulation data is available to download.", true);
+        return;
+      }
+      const config = readFormConfig();
+      const rows = yearlyPerformanceRows(latestPoints, latestEquitySeries, config.startingCapital);
+      if (!rows.length) {
+        setStatus("No yearly performance rows are available to download.", true);
+        return;
+      }
+
+      const csvRows = [["year", "beginning_balance", "ending_balance", "percent_up_or_down"]];
+      for (const row of rows) {
+        csvRows.push([
+          row.year,
+          row.beginning.toFixed(2),
+          row.ending.toFixed(2),
+          (row.percentChange * 100).toFixed(2) + "%"
+        ]);
+      }
+
+      const filename = [
+        loadedTicker || getTicker(),
+        "yearly",
+        config.maType,
+        String(config.smaWindow)
+      ].join("_").replace(/[^A-Za-z0-9._-]/g, "") + ".csv";
+
+      downloadText(
+        filename,
+        csvRows.map((row) => row.map(csvCell).join(",")).join("\n") + "\n",
+        "text/csv;charset=utf-8"
+      );
+      setStatus("Downloaded yearly performance CSV.");
+    }
+
+    function roundCents(value) {
+      return Math.round(value * 100) / 100;
+    }
+
+    function emaCrossoverSellBelowFromCurrent(shortEma, longEma, windowSize) {
+      const fastWindow = emaCrossoverFastWindow(windowSize);
+      const slowWindow = emaCrossoverSlowWindow(windowSize);
+      const fastAlpha = 2 / (fastWindow + 1);
+      const slowAlpha = 2 / (slowWindow + 1);
+      const denominator = fastAlpha - slowAlpha;
+      if (Math.abs(denominator) <= 1e-12) {
+        return null;
+      }
+      return (((1 - slowAlpha) * longEma) - ((1 - fastAlpha) * shortEma)) / denominator;
+    }
+
+    function currentEmaCrossoverValues(longEma, spread, windowSize) {
+      if (longEma === null || spread === null || ![longEma, spread].every(Number.isFinite)) {
+        return null;
+      }
+      const fastWindow = emaCrossoverFastWindow(windowSize);
+      const slowWindow = emaCrossoverSlowWindow(windowSize);
+      return {
+        fastWindow,
+        slowWindow,
+        shortEma: longEma + spread,
+        longEma
+      };
+    }
+
+    function formatCurrentMetric(points, maSeries, signalSeries, config) {
+      if (!points.length) {
+        return "--";
+      }
+
+      const latestIndex = points.length - 1;
+      const rows = [
+        ["Price", formatMoneyCents(points[latestIndex].close)]
+      ];
+
+      if (config.maType === "simple") {
+        const sma = maSeries[latestIndex];
+        if (sma !== null && Number.isFinite(sma)) {
+          rows.push(["SMA " + config.smaWindow, formatMoneyCents(sma)]);
+        }
+      } else if (config.maType === "ema_n22n") {
+        const longEma = maSeries[latestIndex];
+        const spread = signalSeries[latestIndex];
+        const currentEma = currentEmaCrossoverValues(longEma, spread, config.smaWindow);
+        if (currentEma) {
+          const displayedShortEma = roundCents(currentEma.shortEma);
+          const displayedLongEma = roundCents(currentEma.longEma);
+          const sellBelow = emaCrossoverSellBelowFromCurrent(displayedShortEma, displayedLongEma, config.smaWindow);
+          rows.push(["Short EMA " + currentEma.fastWindow, formatMoneyCents(displayedShortEma)]);
+          rows.push(["Long EMA " + currentEma.slowWindow, formatMoneyCents(displayedLongEma)]);
+          rows.push(["EMA Spread", formatPercent(currentEma.longEma === 0 ? 0 : ((currentEma.shortEma - currentEma.longEma) / currentEma.longEma))]);
+          if (sellBelow !== null) {
+            rows.push(["Sell Below", formatMoneyCents(sellBelow)]);
+          }
+        }
+      }
+
+      return (
+        '<table class="metric-table"><tbody>' +
+        rows.map(([label, value]) => "<tr><th>" + label + "</th><td>" + value + "</td></tr>").join("") +
+        "</tbody></table>"
+      );
+    }
+
+    function computeSellBelow(points, config, maSeries = [], signalSeries = []) {
       const windowSize = config.smaWindow;
       if (points.length < windowSize - 1) {
         return null;
@@ -1886,7 +2125,7 @@
 
       if (config.maType === "exponential") {
         const ema = computeEma(points, windowSize);
-        for (let i = ema.length - 2; i >= 0; i -= 1) {
+        for (let i = ema.length - 1; i >= 0; i -= 1) {
           if (ema[i] !== null) {
             return ema[i];
           }
@@ -1894,20 +2133,29 @@
         return null;
       }
 
-      if (config.maType === "ema_50_100") {
+      if (config.maType === "ema_n22n") {
         const fastWindow = emaCrossoverFastWindow(windowSize);
         const slowWindow = emaCrossoverSlowWindow(windowSize);
+        const fastAlpha = 2 / (fastWindow + 1);
+        const slowAlpha = 2 / (slowWindow + 1);
+        const denominator = fastAlpha - slowAlpha;
+        if (Math.abs(denominator) <= 1e-12) {
+          return null;
+        }
+        if (maSeries.length && signalSeries.length) {
+          for (let i = points.length - 1; i >= 0; i -= 1) {
+            const currentEma = currentEmaCrossoverValues(maSeries[i], signalSeries[i], windowSize);
+            if (currentEma) {
+              return (((1 - slowAlpha) * currentEma.longEma) - ((1 - fastAlpha) * currentEma.shortEma)) / denominator;
+            }
+          }
+        }
+
         const crossover = computeEmaCrossover(points, windowSize);
-        for (let i = points.length - 2; i >= 0; i -= 1) {
+        for (let i = points.length - 1; i >= 0; i -= 1) {
           const fast = crossover.fastSeries[i];
           const slow = crossover.slowSeries[i];
           if (fast !== null && slow !== null) {
-            const fastAlpha = 2 / (fastWindow + 1);
-            const slowAlpha = 2 / (slowWindow + 1);
-            const denominator = fastAlpha - slowAlpha;
-            if (Math.abs(denominator) <= 1e-12) {
-              return null;
-            }
             return (((1 - slowAlpha) * slow) - ((1 - fastAlpha) * fast)) / denominator;
           }
         }
@@ -2076,17 +2324,17 @@
       const tradingDayIndexByTime = new Map(labels.map((date, index) => [date.getTime(), index]));
       const roundedMaSeries = maSeries.map((value) => (value === null ? null : Number(value.toFixed(2))));
       const signalDigits = isPredictedLeastSquaresType(config.maType) || isZeroLineSignalType(config.maType) ? 2 : 4;
-      const roundedSignalSeries = (isLeastSquaresType(config.maType) || config.maType === "ema_50_100")
+      const roundedSignalSeries = (isLeastSquaresType(config.maType) || config.maType === "ema_n22n")
         ? signalSeries.map((value) => (value === null ? null : Number(value.toFixed(signalDigits))))
         : [];
-      const emaFastSeries = config.maType === "ema_50_100"
+      const emaFastSeries = config.maType === "ema_n22n"
         ? maSeries.map((value, index) => (value === null || signalSeries[index] === null ? null : value + signalSeries[index]))
         : [];
       const roundedEmaFastSeries = emaFastSeries.map((value) => (value === null ? null : Number(value.toFixed(2))));
-      const emaFastAboveSeries = config.maType === "ema_50_100"
+      const emaFastAboveSeries = config.maType === "ema_n22n"
         ? emaFastSeries.map((value, index) => (value !== null && maSeries[index] !== null && value >= maSeries[index] ? Number(value.toFixed(2)) : null))
         : [];
-      const emaFastBelowSeries = config.maType === "ema_50_100"
+      const emaFastBelowSeries = config.maType === "ema_n22n"
         ? emaFastSeries.map((value, index) => (value !== null && maSeries[index] !== null && value < maSeries[index] ? Number(value.toFixed(2)) : null))
         : [];
       const leastSquaresSegments = config.maType === "least_squares"
@@ -2128,7 +2376,7 @@
         }
       ];
 
-      if (!isLeastSquaresType(config.maType) && config.maType !== "ema_50_100") {
+      if (!isLeastSquaresType(config.maType) && config.maType !== "ema_n22n") {
         datasets.push({
           label: maLabel(config.maType, config.smaWindow),
           data: roundedMaSeries,
@@ -2140,7 +2388,7 @@
         });
       }
 
-      if (config.maType === "ema_50_100") {
+      if (config.maType === "ema_n22n") {
         const emaSlowDatasetIndex = datasets.length;
         const emaFastWindow = emaCrossoverFastWindow(config.smaWindow);
         const emaSlowWindow = emaCrossoverSlowWindow(config.smaWindow);
@@ -2398,10 +2646,10 @@
             },
             slope: {
               type: "linear",
-              display: isZeroLineSignalType(config.maType) && config.maType !== "ema_50_100",
+              display: isZeroLineSignalType(config.maType) && config.maType !== "ema_n22n",
               position: "right",
               ticks: {
-                callback: (value) => config.maType === "ema_50_100" ? Number(value).toFixed(2) : Number(value).toFixed(0) + "%"
+                callback: (value) => config.maType === "ema_n22n" ? Number(value).toFixed(2) : Number(value).toFixed(0) + "%"
               },
               grid: {
                 drawOnChartArea: false
@@ -2505,19 +2753,17 @@
         renderChartRange(config);
 
         const latest = points[points.length - 1];
-        const sellBelow = computeSellBelow(points, config);
         const suggestion = config.delta <= 0
           ? { termDays: 0, estSurvival: 0, rawSurvival: 0 }
-          : chooseSuggestedTerm(points, simulation.smaSeries, simulation.signalSeries, config.maType, points.length - 1, config.survivalThreshold, config.delta, simulation.survivalCalibration, config.maxTerm);
+          : chooseSuggestedTerm(points, simulation.smaSeries, simulation.tradeSignalSeries || simulation.signalSeries, config.maType, points.length - 1, config.survivalThreshold, config.delta, simulation.survivalCalibration, config.maxTerm);
         latestEl.textContent = "Latest close: $" + latest.close.toFixed(2) + " (" + formatDate(latest.date) + ")";
         dataSourceEl.textContent = currentDataSource || ("Daily prices (" + ticker + ")");
         metricFinalEl.textContent = formatMoney(stats.finalEquity);
         metricCagrEl.textContent = formatPercent(stats.cagr);
         metricMaxDdEl.textContent = formatPercent(stats.maxDrawdown);
-        metricRegimeEl.textContent = simulation.currentRegime;
+        metricPositionEl.innerHTML = formatPositionMetric(simulation.currentInvestmentLabel, simulation.currentRegime);
+        metricCurrentEl.innerHTML = formatCurrentMetric(points, simulation.smaSeries, simulation.signalSeries, config);
         metricSuggestedTermEl.textContent = suggestion.termDays > 0 ? (String(suggestion.termDays) + " days") : "No sale";
-        metricSuggestedInvestmentEl.textContent = simulation.currentInvestmentLabel;
-        metricSellBelowEl.textContent = sellBelow === null ? "--" : formatMoneyCents(sellBelow);
         metricExpiredOtmEl.textContent = String(simulation.expiredOtmCount) + " | " + formatMoney(simulation.expiredOtmPnl);
         metricForcedSalesEl.textContent = String(simulation.boughtBackCount) + " | " + formatMoney(simulation.boughtBackPnl);
         metricCalloutsEl.textContent = String(simulation.assignedCount) + " | " + formatMoney(simulation.assignedPnl);
@@ -2535,10 +2781,9 @@
         metricFinalEl.textContent = "$--";
         metricCagrEl.textContent = "--";
         metricMaxDdEl.textContent = "--";
-        metricRegimeEl.textContent = "--";
+        metricPositionEl.textContent = "--";
+        metricCurrentEl.textContent = "--";
         metricSuggestedTermEl.textContent = "--";
-        metricSuggestedInvestmentEl.textContent = "--";
-        metricSellBelowEl.textContent = "--";
         metricForcedSalesEl.textContent = "--";
         metricCalloutsEl.textContent = "--";
         metricExpiredOtmEl.textContent = "--";
@@ -2555,7 +2800,10 @@
         document.title = ticker + " quantized covered call backtest";
         eyebrowEl.textContent = ticker + " quantized covered call backtest";
         headlineEl.textContent = ticker + " quantized strategy with " + maLabel(config.maType, config.smaWindow);
-        subheadEl.textContent = "Quantized 0/20/40/60/80/100% allocation using a " + maName(config.maType, config.smaWindow) + " +/- 1 standard-deviation band, with any decrease applied immediately and any increase delayed by " + config.delayDays + " trading days. Covered calls are sold only against fully covered 100-share lots. Simulation starts 300 trading days in with " + formatMoney(config.startingCapital) + ". Survival is empirically calibrated to historical expired-OTM outcomes.";
+        const allocationDescription = config.maType === "ema_n22n"
+          ? "binary 0/100% allocation using the " + maName(config.maType, config.smaWindow)
+          : "quantized 0/20/40/60/80/100% allocation using a " + maName(config.maType, config.smaWindow) + " +/- 1 standard-deviation band";
+        subheadEl.textContent = allocationDescription + ", with any decrease applied immediately and any increase delayed by " + config.delayDays + " trading days. Covered calls are sold only against fully covered 100-share lots. Simulation starts 300 trading days in with " + formatMoney(config.startingCapital) + ". Survival is empirically calibrated to historical expired-OTM outcomes.";
       } else {
         document.title = ticker + " covered call backtest";
         eyebrowEl.textContent = ticker + " covered call backtest";
@@ -2648,6 +2896,10 @@
       activeRange = button.dataset.range || "MAX";
       activeRangeEndIndex = null;
       renderChartRange(readFormConfig());
+    });
+
+    downloadYearlyCsvEl.addEventListener("click", () => {
+      downloadYearlyPerformanceCsv();
     });
 
     tickerForm.addEventListener("submit", (event) => {

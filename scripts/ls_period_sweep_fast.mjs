@@ -373,6 +373,27 @@ function computeEmaCrossover(points, windowSize) {
   return { fastSeries, slowSeries, spreadSeries };
 }
 
+function emaCrossoverSignalAfterClose(price, slowEma, spread, windowSize) {
+  if (![price, slowEma, spread].every(Number.isFinite)) {
+    return null;
+  }
+  const fastAlpha = 2 / (windowSize + 1);
+  const slowAlpha = 2 / ((windowSize * 2) + 1);
+  const fastEma = (fastAlpha * price) + ((1 - fastAlpha) * (slowEma + spread));
+  const updatedSlowEma = (slowAlpha * price) + ((1 - slowAlpha) * slowEma);
+  return fastEma - updatedSlowEma;
+}
+
+function computeEmaCrossoverTradeSignal(points, slowSeries, spreadSeries, windowSize) {
+  return spreadSeries.map((spread, index) => {
+    const slowEma = slowSeries[index];
+    if (slowEma === null || spread === null) {
+      return null;
+    }
+    return emaCrossoverSignalAfterClose(points[index].close, slowEma, spread, windowSize);
+  });
+}
+
 function isBuySignal(signal) {
   return signal !== null && Number.isFinite(signal) && signal > 0;
 }
@@ -497,7 +518,7 @@ function computeStrategySeries(points, period, config) {
     const crossover = computeEmaCrossover(points, period);
     return {
       maSeries: crossover.slowSeries,
-      signalSeries: crossover.spreadSeries
+      signalSeries: computeEmaCrossoverTradeSignal(points, crossover.slowSeries, crossover.spreadSeries, period)
     };
   }
   const leastSquares = computeLeastSquares(points, period);
