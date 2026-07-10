@@ -404,7 +404,7 @@
           <div class="metric-value" id="metric-position">--</div>
         </div>
         <div class="metric-card">
-          <div class="metric-label">Current</div>
+          <div class="metric-label" id="metric-current-label">Current</div>
           <div class="metric-value small" id="metric-current">--</div>
         </div>
         <div class="metric-card">
@@ -424,8 +424,8 @@
           <div class="metric-value small" id="metric-term-breakdown">--</div>
         </div>
         <div class="metric-card">
-          <div class="metric-label">Suggested Term</div>
-          <div class="metric-value" id="metric-suggested-term">--</div>
+          <div class="metric-label">Suggested Call</div>
+          <div class="metric-value small" id="metric-suggested-term">--</div>
         </div>
         <div class="metric-card">
           <div class="metric-label">% Time In Market</div>
@@ -468,6 +468,7 @@
     const metricCagrEl = document.getElementById("metric-cagr");
     const metricMaxDdEl = document.getElementById("metric-maxdd");
     const metricPositionEl = document.getElementById("metric-position");
+    const metricCurrentLabelEl = document.getElementById("metric-current-label");
     const metricCurrentEl = document.getElementById("metric-current");
     const metricSuggestedTermEl = document.getElementById("metric-suggested-term");
     const metricForcedSalesEl = document.getElementById("metric-forced-sales");
@@ -1123,6 +1124,63 @@
       return 0.5 * (1 + erfApprox(x / Math.sqrt(2)));
     }
 
+    function inverseNormCdf(p) {
+      if (p <= 0) {
+        return Number.NEGATIVE_INFINITY;
+      }
+      if (p >= 1) {
+        return Number.POSITIVE_INFINITY;
+      }
+
+      const a = [
+        -3.969683028665376e+01,
+        2.209460984245205e+02,
+        -2.759285104469687e+02,
+        1.383577518672690e+02,
+        -3.066479806614716e+01,
+        2.506628277459239e+00
+      ];
+      const b = [
+        -5.447609879822406e+01,
+        1.615858368580409e+02,
+        -1.556989798598866e+02,
+        6.680131188771972e+01,
+        -1.328068155288572e+01
+      ];
+      const c = [
+        -7.784894002430293e-03,
+        -3.223964580411365e-01,
+        -2.400758277161838e+00,
+        -2.549732539343734e+00,
+        4.374664141464968e+00,
+        2.938163982698783e+00
+      ];
+      const d = [
+        7.784695709041462e-03,
+        3.224671290700398e-01,
+        2.445134137142996e+00,
+        3.754408661907416e+00
+      ];
+      const lower = 0.02425;
+      const upper = 1 - lower;
+
+      if (p < lower) {
+        const q = Math.sqrt(-2 * Math.log(p));
+        return (((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) /
+          ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1);
+      }
+      if (p > upper) {
+        const q = Math.sqrt(-2 * Math.log(1 - p));
+        return -(((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) /
+          ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1);
+      }
+
+      const q = p - 0.5;
+      const r = q * q;
+      return (((((a[0] * r + a[1]) * r + a[2]) * r + a[3]) * r + a[4]) * r + a[5]) * q /
+        (((((b[0] * r + b[1]) * r + b[2]) * r + b[3]) * r + b[4]) * r + 1);
+    }
+
     function callDelta(spot, strike, timeToExpiry, rate, sigma) {
       if (sigma <= 0 || timeToExpiry <= 0 || spot <= 0 || strike <= 0) {
         return 0;
@@ -1142,17 +1200,17 @@
     }
 
     function findStrike(spot, timeToExpiry, rate, sigma, targetDelta) {
-      let bestStrike = spot;
-      let bestError = Number.POSITIVE_INFINITY;
-      for (let i = 0; i < 400; i += 1) {
-        const strike = spot * (0.90 + (0.30 * i / 399));
-        const error = Math.abs(callDelta(spot, strike, timeToExpiry, rate, sigma) - targetDelta);
-        if (error < bestError) {
-          bestError = error;
-          bestStrike = strike;
-        }
+      if (sigma <= 0 || timeToExpiry <= 0 || spot <= 0 || !(targetDelta > 0 && targetDelta < 1)) {
+        return spot;
       }
-      return bestStrike;
+      const z = inverseNormCdf(targetDelta);
+      const varianceTerm = (rate + 0.5 * sigma * sigma) * timeToExpiry;
+      const volatilityTerm = sigma * Math.sqrt(timeToExpiry) * z;
+      return spot * Math.exp(varianceTerm - volatilityTerm);
+    }
+
+    function roundOptionStrike(strike) {
+      return Math.max(1, Math.round(strike));
     }
 
     function sampleStdDev(values) {
@@ -1339,7 +1397,7 @@
           const rawSurvival = 1 - forcedSaleProbability(price, movingAverage, sigma, drift, termDays);
           const expirationIndex = Math.min(index + termDays, points.length - 1);
           const timeToExpiry = Math.max((expirationIndex - index) / DAYS_PER_YEAR, 1 / DAYS_PER_YEAR);
-          const strike = findStrike(price, timeToExpiry, CASH_RATE, sigma, delta);
+          const strike = roundOptionStrike(findStrike(price, timeToExpiry, CASH_RATE, sigma, delta));
           let forcedBuyback = false;
           for (let future = index + 1; future < expirationIndex; future += 1) {
             const futureMa = maSeries[future];
@@ -1675,7 +1733,7 @@
             const expirationIndex = Math.min(i + suggestion.termDays, points.length - 1);
             const timeToExpiry = Math.max((expirationIndex - i) / DAYS_PER_YEAR, 1 / DAYS_PER_YEAR);
             const sigma = estimateSigma(points, i);
-            const strike = findStrike(price, timeToExpiry, CASH_RATE, sigma, config.delta);
+            const strike = roundOptionStrike(findStrike(price, timeToExpiry, CASH_RATE, sigma, config.delta));
             const premium = callPrice(price, strike, timeToExpiry, CASH_RATE, sigma);
             cash += shares * premium;
             activeOption = {
@@ -1863,7 +1921,7 @@
             const expirationIndex = Math.min(i + termDays, points.length - 1);
             const timeToExpiry = Math.max((expirationIndex - i) / DAYS_PER_YEAR, 1 / DAYS_PER_YEAR);
             const sigma = estimateSigma(points, i);
-            const strike = findStrike(price, timeToExpiry, CASH_RATE, sigma, config.delta);
+            const strike = roundOptionStrike(findStrike(price, timeToExpiry, CASH_RATE, sigma, config.delta));
             const premium = callPrice(price, strike, timeToExpiry, CASH_RATE, sigma);
             cash += coveredContracts * 100 * premium;
             sales += coveredContracts;
@@ -1946,6 +2004,34 @@
         minimumFractionDigits: 2,
         maximumFractionDigits: 2
       });
+    }
+
+    function suggestedCallQuote(points, config, suggestion) {
+      if (!suggestion || suggestion.termDays <= 0 || !(config.delta > 0) || points.length === 0) {
+        return null;
+      }
+      const index = points.length - 1;
+      const price = points[index].close;
+      const timeToExpiry = Math.max(suggestion.termDays / DAYS_PER_YEAR, 1 / DAYS_PER_YEAR);
+      const sigma = estimateSigma(points, index);
+      const strike = roundOptionStrike(findStrike(price, timeToExpiry, CASH_RATE, sigma, config.delta));
+      const limit = callPrice(price, strike, timeToExpiry, CASH_RATE, sigma);
+      return {
+        strike,
+        limit,
+        termDays: suggestion.termDays
+      };
+    }
+
+    function formatSuggestedCallQuote(quote) {
+      if (!quote) {
+        return "No sale";
+      }
+      return String(quote.termDays) + " days | Limit " + formatMoneyCents(quote.limit) + " | Strike " + formatMoney(quote.strike);
+    }
+
+    function formatSlopePercent(value) {
+      return Number.isFinite(value) ? value.toFixed(2) + "%" : "--";
     }
 
     function formatPercent(value) {
@@ -2098,6 +2184,13 @@
           if (sellBelow !== null) {
             rows.push(["Sell Below", formatMoneyCents(sellBelow)]);
           }
+        }
+      } else if (isZeroLineSignalType(config.maType) && isLeastSquaresType(config.maType) && !isPredictedLeastSquaresType(config.maType)) {
+        const slope = signalSeries[latestIndex];
+        const sellBelow = computeSellBelow(points, config, maSeries, signalSeries);
+        rows.push(["Slope", formatSlopePercent(slope)]);
+        if (sellBelow !== null && Number.isFinite(sellBelow)) {
+          rows.push(["Sell Below", formatMoneyCents(sellBelow)]);
         }
       }
 
@@ -2762,8 +2855,9 @@
         metricCagrEl.textContent = formatPercent(stats.cagr);
         metricMaxDdEl.textContent = formatPercent(stats.maxDrawdown);
         metricPositionEl.innerHTML = formatPositionMetric(simulation.currentInvestmentLabel, simulation.currentRegime);
+        metricCurrentLabelEl.textContent = isZeroLineSignalType(config.maType) && isLeastSquaresType(config.maType) && !isPredictedLeastSquaresType(config.maType) ? "Price / Slope" : "Current";
         metricCurrentEl.innerHTML = formatCurrentMetric(points, simulation.smaSeries, simulation.signalSeries, config);
-        metricSuggestedTermEl.textContent = suggestion.termDays > 0 ? (String(suggestion.termDays) + " days") : "No sale";
+        metricSuggestedTermEl.textContent = formatSuggestedCallQuote(suggestedCallQuote(points, config, suggestion));
         metricExpiredOtmEl.textContent = String(simulation.expiredOtmCount) + " | " + formatMoney(simulation.expiredOtmPnl);
         metricForcedSalesEl.textContent = String(simulation.boughtBackCount) + " | " + formatMoney(simulation.boughtBackPnl);
         metricCalloutsEl.textContent = String(simulation.assignedCount) + " | " + formatMoney(simulation.assignedPnl);
@@ -2782,6 +2876,7 @@
         metricCagrEl.textContent = "--";
         metricMaxDdEl.textContent = "--";
         metricPositionEl.textContent = "--";
+        metricCurrentLabelEl.textContent = "Current";
         metricCurrentEl.textContent = "--";
         metricSuggestedTermEl.textContent = "--";
         metricForcedSalesEl.textContent = "--";
