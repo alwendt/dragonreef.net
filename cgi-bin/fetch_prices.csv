@@ -1,10 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+CSV_HEADER="date,open,high,low,close,volume"
+EARLIEST_DATE="1900-01-01"
+LOCK_STALE_SECONDS=900
+
 query="${QUERY_STRING:-}"
 raw_ticker=""
+force_refresh=0
 if [[ -n "$query" ]]; then
   raw_ticker=$(printf "%s" "$query" | tr '&' '\n' | awk -F= '$1 == "t" { print $2; exit }')
+  raw_refresh=$(printf "%s" "$query" | tr '&' '\n' | awk -F= '$1 == "refresh" { print $2; exit }')
+  if [[ "$raw_refresh" == "1" || "$raw_refresh" == "true" || "$raw_refresh" == "yes" ]]; then
+    force_refresh=1
+  fi
 fi
 
 raw_ticker=$(printf "%s" "$raw_ticker" | tr '+' ' ')
@@ -18,16 +27,363 @@ if [[ -z "$cleaned" ]]; then
   cleaned="VOO"
 fi
 
-cache_root="/opt/tomcat/webapps/ROOT/WEB-INF/chart-cache"
+cache_root="${CHART_CACHE_ROOT:-/opt/tomcat/webapps/ROOT/WEB-INF/chart-cache}"
 cache_file="${cache_root}/${cleaned}.csv"
+lock_dir="${cache_root}/.${cleaned}.lock"
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+refresh_helper="${REFRESH_CHART_CACHE_HELPER:-${script_dir}/../scripts/refresh_chart_cache.mjs}"
+declare -a temp_files=()
 
-if [[ ! -s "$cache_file" ]] || [[ $(wc -l < "$cache_file") -le 1 ]]; then
-  printf "Status: 502 Bad Gateway\n"
+cleanup() {
+  local file
+  for file in "${temp_files[@]}"; do
+    rm -f "$file"
+  done
+  rmdir "$lock_dir" 2>/dev/null || true
+}
+
+http_error() {
+  local status="$1"
+  local message="$2"
+  printf "Status: %s\n" "$status"
   printf "Content-Type: text/plain\n\n"
-  printf "No cached CSV is available for %s.\n" "$cleaned"
-  exit 1
+  printf "%s\n" "$message"
+}
+
+date_to_epoch() {
+  date -u -d "$1" +%s
+}
+
+next_day() {
+  date -u -d "$1 + 1 day" +%F
+}
+
+stooq_symbol() {
+  local symbol="$1"
+  if [[ "$symbol" != *.* ]]; then
+    symbol="${symbol}.US"
+  fi
+  printf "%s" "${symbol,,}"
+}
+
+stooq_date_param() {
+  printf "%s" "$1" | tr -d '-'
+}
+
+zero_prefix() {
+  local count="$1"
+  local prefix=""
+  while [[ ${#prefix} -lt "$count" ]]; do
+    prefix="${prefix}0"
+  done
+  printf "%s" "$prefix"
+}
+
+sha256_hex() {
+  printf "%s" "$1" | sha256sum | awk '{ print $1 }'
+}
+
+solve_stooq_verification() {
+  local challenge_file="$1"
+  local cookie_jar="$2"
+  local challenge
+  local difficulty
+  local prefix
+  local nonce=0
+  local digest
+
+  if ! grep -q "/__verify" "$challenge_file"; then
+    return 0
+  fi
+
+  challenge=$(sed -n 's/.*const c="\([^"]*\)".*/\1/p' "$challenge_file" | head -n 1)
+  difficulty=$(sed -n 's/.*d=\([0-9][0-9]*\),t=.*/\1/p' "$challenge_file" | head -n 1)
+  if [[ -z "$challenge" ]] || [[ -z "$difficulty" ]]; then
+    return 1
+  fi
+
+  prefix=$(zero_prefix "$difficulty")
+  while true; do
+    digest=$(sha256_hex "${challenge}${nonce}")
+    if [[ "${digest:0:difficulty}" == "$prefix" ]]; then
+      break
+    fi
+    nonce=$((nonce + 1))
+  done
+
+  curl \
+    --fail \
+    --show-error \
+    --silent \
+    --location \
+    --http1.1 \
+    --compressed \
+    --max-time 45 \
+    --connect-timeout 10 \
+    --cookie-jar "$cookie_jar" \
+    --cookie "$cookie_jar" \
+    --user-agent "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36" \
+    --header "Content-Type: application/x-www-form-urlencoded" \
+    --data-urlencode "c=${challenge}" \
+    --data-urlencode "n=${nonce}" \
+    "https://stooq.com/__verify" >/dev/null
+}
+
+last_cached_date() {
+  if [[ ! -s "$cache_file" ]] || [[ $(wc -l < "$cache_file") -le 1 ]]; then
+    return 1
+  fi
+
+  awk -F, '
+    NR > 1 && $1 ~ /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/ { latest = $1 }
+    END {
+      if (latest) {
+        print latest
+      } else {
+        exit 1
+      }
+    }
+  ' "$cache_file"
+}
+
+normalize_csv() {
+  awk -F, -v OFS=',' -v header="$CSV_HEADER" '
+    BEGIN { print header }
+    NR == 1 { next }
+    $1 ~ /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/ && $5 != "" {
+      print $1, $2, $3, $4, $5, $6
+    }
+  ' "$1"
+}
+
+csv_has_rows() {
+  [[ -s "$1" ]] && [[ $(wc -l < "$1") -gt 1 ]]
+}
+
+cache_has_rows() {
+  [[ -s "$cache_file" ]] && [[ $(wc -l < "$cache_file") -gt 1 ]]
+}
+
+cache_is_current() {
+  local today
+  local last_date
+
+  today=$(date -u +%F)
+  if ! last_date=$(last_cached_date); then
+    return 1
+  fi
+
+  [[ $(date_to_epoch "$last_date") -ge $(date_to_epoch "$today") ]]
+}
+
+serve_cache() {
+  printf "Content-Type: text/plain\n"
+  printf "X-Data-Source: %s\n\n" "Daily cache (${cleaned})"
+  cat "$cache_file"
+}
+
+merge_csv_files() {
+  local existing="$1"
+  local incoming="$2"
+  local output="$3"
+
+  printf "%s\n" "$CSV_HEADER" > "$output"
+  awk -F, -v OFS=',' '
+    FNR == 1 { next }
+    $1 ~ /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/ && $5 != "" {
+      rows[$1] = $1 OFS $2 OFS $3 OFS $4 OFS $5 OFS $6
+    }
+    END {
+      for (date in rows) {
+        print rows[date]
+      }
+    }
+  ' "$existing" "$incoming" | sort -t, -k1,1 >> "$output"
+}
+
+fetch_history() {
+  local from_date="$1"
+  local output="$2"
+  local symbol
+  local d1
+  local cookie_jar
+  local root_tmp
+
+  symbol=$(stooq_symbol "$cleaned")
+  d1=$(stooq_date_param "$from_date")
+  cookie_jar=$(mktemp "${cache_root}/.${cleaned}.cookies.XXXXXX")
+  root_tmp=$(mktemp "${cache_root}/.${cleaned}.root.XXXXXX")
+  temp_files+=("$cookie_jar" "$root_tmp")
+
+  local browser_ua="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"
+  local curl_common_args=(
+    --fail \
+    --show-error \
+    --silent \
+    --location \
+    --http1.1 \
+    --compressed \
+    --max-time 45 \
+    --connect-timeout 10 \
+    --cookie-jar "$cookie_jar" \
+    --cookie "$cookie_jar" \
+    --user-agent "$browser_ua"
+  )
+  local common_headers=(
+    --header "Accept-Language: en-US,en;q=0.9" \
+    --header "Cache-Control: no-cache" \
+    --header "Pragma: no-cache"
+  )
+
+  curl "${curl_common_args[@]}" \
+    "${common_headers[@]}" \
+    --header "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8" \
+    "https://stooq.com/" > "$root_tmp"
+
+  if grep -q "/__verify" "$root_tmp"; then
+    solve_stooq_verification "$root_tmp" "$cookie_jar"
+    curl "${curl_common_args[@]}" \
+      "${common_headers[@]}" \
+      --header "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8" \
+      "https://stooq.com/" > "$root_tmp"
+  fi
+
+  curl "${curl_common_args[@]}" \
+    "${common_headers[@]}" \
+    --header "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8" \
+    --header "Referer: https://stooq.com/" \
+    "https://stooq.com/q/?s=${symbol}" >/dev/null
+
+  curl "${curl_common_args[@]}" \
+    "${common_headers[@]}" \
+    --header "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8" \
+    --header "Referer: https://stooq.com/q/?s=${symbol}" \
+    "https://stooq.com/q/d/?s=${symbol}&d1=${d1}" >/dev/null
+
+  curl "${curl_common_args[@]}" \
+    "${common_headers[@]}" \
+    --header "Accept: text/csv,text/plain,*/*" \
+    --header "Referer: https://stooq.com/q/d/?s=${symbol}&d1=${d1}" \
+    "https://stooq.com/q/d/l/?s=${symbol}&i=d&d1=${d1}" > "$output"
+}
+
+refresh_with_yahoo_helper() {
+  local from_date="$1"
+
+  if [[ ! -f "$refresh_helper" ]]; then
+    return 1
+  fi
+
+  node "$refresh_helper" \
+    --output-dir "$cache_root" \
+    --source yahoo \
+    --from-date "$from_date" \
+    "$cleaned" >/dev/null
+}
+
+refresh_cache_if_needed() {
+  local today
+  local last_date
+  local from_date
+  local raw_tmp
+  local normalized_tmp
+  local merged_tmp
+
+  mkdir -p "$cache_root"
+
+  today=$(date -u +%F)
+  if last_date=$(last_cached_date); then
+    if [[ $(date_to_epoch "$last_date") -ge $(date_to_epoch "$today") ]]; then
+      return 0
+    fi
+    from_date=$(next_day "$last_date")
+  else
+    from_date="$EARLIEST_DATE"
+  fi
+
+  raw_tmp=$(mktemp "${cache_root}/.${cleaned}.raw.XXXXXX")
+  normalized_tmp=$(mktemp "${cache_root}/.${cleaned}.normalized.XXXXXX")
+  merged_tmp=$(mktemp "${cache_root}/.${cleaned}.merged.XXXXXX")
+  temp_files+=("$raw_tmp" "$normalized_tmp" "$merged_tmp")
+
+  if ! fetch_history "$from_date" "$raw_tmp"; then
+    if refresh_with_yahoo_helper "$from_date"; then
+      return 0
+    fi
+    if [[ -s "$cache_file" ]] && [[ $(wc -l < "$cache_file") -gt 1 ]]; then
+      return 0
+    fi
+    return 1
+  fi
+  normalize_csv "$raw_tmp" > "$normalized_tmp"
+
+  if ! csv_has_rows "$normalized_tmp"; then
+    if refresh_with_yahoo_helper "$from_date"; then
+      return 0
+    fi
+    if [[ ! -s "$cache_file" ]] || [[ $(wc -l < "$cache_file") -le 1 ]]; then
+      return 1
+    fi
+    return 0
+  fi
+
+  if [[ -s "$cache_file" ]] && [[ $(wc -l < "$cache_file") -gt 1 ]]; then
+    merge_csv_files "$cache_file" "$normalized_tmp" "$merged_tmp"
+  else
+    cp "$normalized_tmp" "$merged_tmp"
+  fi
+
+  chmod 0644 "$merged_tmp"
+  mv "$merged_tmp" "$cache_file"
+}
+
+acquire_lock() {
+  local max_attempts="${1:-120}"
+  local attempts=0
+  local now
+  local lock_mtime
+
+  while ! mkdir "$lock_dir" 2>/dev/null; do
+    if [[ -d "$lock_dir" ]]; then
+      now=$(date +%s)
+      lock_mtime=$(stat -c %Y "$lock_dir" 2>/dev/null || printf "%s" "$now")
+      if [[ $((now - lock_mtime)) -gt "$LOCK_STALE_SECONDS" ]]; then
+        rmdir "$lock_dir" 2>/dev/null || true
+        continue
+      fi
+    fi
+    attempts=$((attempts + 1))
+    if [[ "$attempts" -ge "$max_attempts" ]]; then
+      return 1
+    fi
+    sleep 1
+  done
+  printf "%s\n" "$$" > "${lock_dir}/pid" 2>/dev/null || true
+  trap cleanup EXIT
+}
+
+start_background_refresh_if_needed() {
+  if cache_is_current; then
+    return 0
+  fi
+
+  if [[ -d "$lock_dir" ]]; then
+    return 0
+  fi
+
+  (
+    export QUERY_STRING="t=${cleaned}"
+    export CHART_CACHE_ROOT="$cache_root"
+    export REFRESH_CHART_CACHE_HELPER="$refresh_helper"
+    export CHART_CACHE_REFRESH_ONLY=1
+    nohup "$0" >/dev/null 2>&1 &
+  ) >/dev/null 2>&1
+}
+
+if cache_has_rows; then
+  serve_cache
+  exit 0
 fi
 
-printf "Content-Type: text/plain\n"
-printf "X-Data-Source: %s\n\n" "Cached daily (${cleaned})"
-cat "$cache_file"
+http_error "502 Bad Gateway" "No cached CSV is available for ${cleaned}."
+exit 1

@@ -363,6 +363,7 @@
             <label class="param">Delay <input id="delay-input" type="number" min="0" step="1" aria-label="Delay days"></label>
             <label class="param">Survival <input id="option-days-input" type="number" min="0" max="0.99" step="0.01" aria-label="Survival probability threshold"></label>
             <label class="param">Max Term <input id="max-term-input" type="number" min="1" step="1" placeholder="Auto" aria-label="Maximum call term in days"></label>
+            <label class="param">Hold <input id="whipsaw-input" type="number" min="0" step="1" aria-label="Whipsaw holdoff trading days"></label>
             <button type="submit" class="secondary">Run</button>
           </form>
         </div>
@@ -377,6 +378,7 @@
           <button type="button" class="secondary" data-range="5Y">5Y</button>
           <button type="button" class="secondary" data-range="MAX">Max</button>
           <button type="button" class="secondary" id="download-yearly-csv">Year CSV</button>
+          <button type="button" class="secondary" id="download-round-trips-csv">Trips CSV</button>
         </div>
         <canvas id="chart"></canvas>
       </div>
@@ -458,8 +460,10 @@
     const delayInput = document.getElementById("delay-input");
     const optionDaysInput = document.getElementById("option-days-input");
     const maxTermInput = document.getElementById("max-term-input");
+    const whipsawInput = document.getElementById("whipsaw-input");
     const rangeControlsEl = document.getElementById("range-controls");
     const downloadYearlyCsvEl = document.getElementById("download-yearly-csv");
+    const downloadRoundTripsCsvEl = document.getElementById("download-round-trips-csv");
     const maLegendEl = document.getElementById("ma-legend");
     const maLegendLabelEl = document.getElementById("ma-legend-label");
     const slopeLegendEl = document.getElementById("slope-legend");
@@ -484,6 +488,7 @@
     const DEFAULT_SURVIVAL_THRESHOLD = 0.50;
     const DEFAULT_BUCKETS = 2;
     const DEFAULT_STARTING_CAPITAL = 10000;
+    const DEFAULT_WHIPSAW_MULTIPLE = 2;
     const QCHART_START_INDEX = 300;
     const CASH_RATE = 0.04;
     const DAYS_PER_YEAR = 252;
@@ -494,6 +499,7 @@
     let latestSignalSeries = [];
     let latestEquitySeries = [];
     let latestSignalEvents = [];
+    let latestRoundTrips = [];
     let activeRange = "MAX";
     let activeRangeEndIndex = null;
     let loadedTicker = "";
@@ -702,6 +708,14 @@
 
     function getDelayDays() {
       return parseIntParam(["DELAY", "delay", "delay_days", "delayDays"], DEFAULT_DELAY_DAYS, 0);
+    }
+
+    function getWhipsawDays(smaWindow) {
+      return parseIntParam(
+        ["WHIPSAW_DAYS", "whipsaw_days", "whipsawDays", "FLOOR_HOLD", "floor_hold", "hold"],
+        smaWindow * DEFAULT_WHIPSAW_MULTIPLE,
+        0
+      );
     }
 
     function getBuckets() {
@@ -1629,6 +1643,22 @@
       let currentInvestmentLabel = "100%";
       let previousInvestedState = null;
       let openRoundTripPurchasePrice = points.length ? points[0].close : null;
+      let openRoundTrip = points.length ? {
+        entryDate: points[0].date,
+        entryIndex: 0,
+        entryPrice: points[0].close,
+        entryShares: shares,
+        entryValue: shares * points[0].close,
+        optionPremium: 0,
+        optionBuyback: 0,
+        cashInterest: 0,
+        callsSold: 0,
+        callsExpiredOtm: 0,
+        callsBoughtBack: 0,
+        callsAssigned: 0
+      } : null;
+      let pendingRoundTrip = null;
+      const roundTrips = [];
       let lastCompletedRoundTripSalePrice = null;
       let lastCompletedRoundTripSaleIndex = null;
       let lastCompletedRoundTripLostMoney = false;
@@ -1662,9 +1692,15 @@
           if (price > activeOption.strike) {
             assignedCount += 1;
             assignedPnl += premiumDollars + optionShares * activeOption.strike - optionShares * price;
+            if (openRoundTrip) {
+              openRoundTrip.callsAssigned += 1;
+            }
           } else {
             expiredOtmCount += 1;
             expiredOtmPnl += premiumDollars;
+            if (openRoundTrip) {
+              openRoundTrip.callsExpiredOtm += 1;
+            }
           }
           const settledEquity = cash + shares * price - shares * Math.max(0, price - activeOption.strike);
           shares = settledEquity / price;
@@ -1672,23 +1708,48 @@
           activeOption = null;
         }
 
-        const suppressSaleAfterLoss = lastCompletedRoundTripLostMoney &&
+        const suppressSaleAfterLoss = config.whipsawDays > 0 &&
+          lastCompletedRoundTripLostMoney &&
           lastCompletedRoundTripSalePrice !== null &&
           lastCompletedRoundTripSaleIndex !== null &&
-          i - lastCompletedRoundTripSaleIndex <= config.smaWindow * 2 &&
+          i - lastCompletedRoundTripSaleIndex <= config.whipsawDays &&
           price > lastCompletedRoundTripSalePrice;
 
-        if (invested && hasSignal && isSellSignal(price, tradeSignal, config.maType) && !suppressSaleAfterLoss) {
+        if (invested && hasSignal && isSellSignal(price, tradeSignal, config.maType) && suppressSaleAfterLoss) {
+          currentRegime = "Floor hold";
+        } else if (invested && hasSignal && isSellSignal(price, tradeSignal, config.maType)) {
           const optionValue = optionMarketValue(activeOption, price, i);
           if (activeOption) {
             const optionShares = activeOption.coveredShares;
             boughtBackCount += 1;
             boughtBackPnl += optionShares * activeOption.premium - optionShares * optionValue;
+            if (openRoundTrip) {
+              openRoundTrip.optionBuyback += optionShares * optionValue;
+              openRoundTrip.callsBoughtBack += 1;
+            }
           }
           lastCompletedRoundTripSalePrice = price;
           lastCompletedRoundTripSaleIndex = i;
           lastCompletedRoundTripLostMoney = openRoundTripPurchasePrice !== null && price < openRoundTripPurchasePrice;
           cash = cash + shares * price - shares * optionValue;
+          if (openRoundTrip) {
+            const exitValue = shares * price;
+            const stockPnl = exitValue - openRoundTrip.entryValue;
+            const netOptionPnl = openRoundTrip.optionPremium - openRoundTrip.optionBuyback;
+            pendingRoundTrip = {
+              ...openRoundTrip,
+              exitDate: points[i].date,
+              exitIndex: i,
+              exitPrice: price,
+              exitShares: shares,
+              exitValue,
+              stockPnl,
+              netOptionPnl,
+              totalPnl: stockPnl + netOptionPnl,
+              exitReason: belowMaReason(config)
+            };
+            openRoundTrip = null;
+          }
           shares = 0;
           activeOption = null;
           invested = false;
@@ -1701,16 +1762,41 @@
             action: "Sell",
             reason: belowMaReason(config)
           });
+        } else if (invested) {
+          currentRegime = "Invested";
         }
 
         if (!invested) {
           if (!justExited) {
+            const interestBefore = cash;
             cash *= 1 + CASH_RATE / DAYS_PER_YEAR;
+            if (pendingRoundTrip) {
+              pendingRoundTrip.cashInterest += cash - interestBefore;
+            }
           }
           if (hasSignal && i >= reentryIndex && isBuySignal(price, tradeSignal, config.maType)) {
+            if (pendingRoundTrip) {
+              pendingRoundTrip.totalPnl += pendingRoundTrip.cashInterest;
+              roundTrips.push(pendingRoundTrip);
+              pendingRoundTrip = null;
+            }
             invested = true;
             openRoundTripPurchasePrice = price;
             shares = cash / price;
+            openRoundTrip = {
+              entryDate: points[i].date,
+              entryIndex: i,
+              entryPrice: price,
+              entryShares: shares,
+              entryValue: shares * price,
+              optionPremium: 0,
+              optionBuyback: 0,
+              cashInterest: 0,
+              callsSold: 0,
+              callsExpiredOtm: 0,
+              callsBoughtBack: 0,
+              callsAssigned: 0
+            };
             cash = 0;
             currentRegime = "Invested";
             signalEvents.push({
@@ -1736,6 +1822,10 @@
             const strike = roundOptionStrike(findStrike(price, timeToExpiry, CASH_RATE, sigma, config.delta));
             const premium = callPrice(price, strike, timeToExpiry, CASH_RATE, sigma);
             cash += shares * premium;
+            if (openRoundTrip) {
+              openRoundTrip.optionPremium += shares * premium;
+              openRoundTrip.callsSold += 1;
+            }
             activeOption = {
               strike,
               sigma,
@@ -1757,6 +1847,11 @@
           investedDays += 1;
         }
         equitySeries.push(equity);
+      }
+
+      if (pendingRoundTrip) {
+        pendingRoundTrip.totalPnl += pendingRoundTrip.cashInterest;
+        roundTrips.push(pendingRoundTrip);
       }
 
       const latestIndex = points.length - 1;
@@ -1788,6 +1883,7 @@
         termCounts,
         transitionCounts,
         timeInMarket: points.length > 0 ? (investedDays / points.length) : 0,
+        roundTrips,
         signalEvents
       };
     }
@@ -1848,10 +1944,11 @@
         }
 
         const rawFraction = quantizeFraction(targetFractionForSignal(price, maSeries[i], stdSeries[i], tradeSignalSeries[i], config, actualFraction), buckets);
-        const suppressSaleAfterLoss = lastCompletedRoundTripLostMoney &&
+        const suppressSaleAfterLoss = config.whipsawDays > 0 &&
+          lastCompletedRoundTripLostMoney &&
           lastCompletedRoundTripSalePrice !== null &&
           lastCompletedRoundTripSaleIndex !== null &&
-          i - lastCompletedRoundTripSaleIndex <= config.smaWindow * 2 &&
+          i - lastCompletedRoundTripSaleIndex <= config.whipsawDays &&
           price > lastCompletedRoundTripSalePrice;
         if (actualFraction === null) {
           actualFraction = rawFraction;
@@ -1884,7 +1981,9 @@
           });
         }
         previousActualFraction = actualFraction;
-        currentRegime = actualFraction > 0 ? (Math.round(actualFraction * 100) + "% invested") : "All Cash";
+        currentRegime = actualFraction > 0 && rawFraction < actualFraction && suppressSaleAfterLoss
+          ? "Floor hold"
+          : (actualFraction > 0 ? (Math.round(actualFraction * 100) + "% invested") : "All Cash");
 
         const currentOptionValue = activeOption ? optionMarketValue(activeOption, price, i) : 0;
         const currentOptionLiability = activeOption ? (activeOption.contracts * 100 * currentOptionValue) : 0;
@@ -2076,8 +2175,69 @@
         });
     }
 
+    function roundTripCsvRows(ticker, roundTrips) {
+      const rows = [[
+        "ticker",
+        "trip_id",
+        "entry_date",
+        "exit_date",
+        "days_held",
+        "entry_price",
+        "exit_price",
+        "shares",
+        "entry_value",
+        "exit_value",
+        "stock_pnl",
+        "option_premium",
+        "option_buyback",
+        "net_option_pnl",
+        "cash_interest",
+        "total_pnl",
+        "total_return_pct",
+        "annualized_return_pct",
+        "calls_sold",
+        "calls_expired_otm",
+        "calls_bought_back",
+        "calls_assigned",
+        "exit_reason"
+      ]];
+
+      roundTrips.forEach((trip, index) => {
+        const daysHeld = Math.max(1, Math.round((trip.exitDate - trip.entryDate) / 86400000));
+        const totalReturn = trip.entryValue ? trip.totalPnl / trip.entryValue : 0;
+        const annualized = Math.pow(1 + totalReturn, 365 / daysHeld) - 1;
+        rows.push([
+          ticker,
+          index + 1,
+          formatDate(trip.entryDate),
+          formatDate(trip.exitDate),
+          daysHeld,
+          trip.entryPrice.toFixed(4),
+          trip.exitPrice.toFixed(4),
+          trip.entryShares.toFixed(6),
+          trip.entryValue.toFixed(2),
+          trip.exitValue.toFixed(2),
+          trip.stockPnl.toFixed(2),
+          trip.optionPremium.toFixed(2),
+          trip.optionBuyback.toFixed(2),
+          trip.netOptionPnl.toFixed(2),
+          trip.cashInterest.toFixed(2),
+          trip.totalPnl.toFixed(2),
+          (totalReturn * 100).toFixed(2) + "%",
+          (annualized * 100).toFixed(2) + "%",
+          trip.callsSold,
+          trip.callsExpiredOtm,
+          trip.callsBoughtBack,
+          trip.callsAssigned,
+          trip.exitReason
+        ]);
+      });
+
+      return rows;
+    }
+
     function downloadText(filename, text, mimeType) {
-      const blob = new Blob([text], { type: mimeType });
+      const blob = new Blob(["\ufeffsep=,\n", text], { type: mimeType });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
@@ -2120,9 +2280,33 @@
       downloadText(
         filename,
         csvRows.map((row) => row.map(csvCell).join(",")).join("\n") + "\n",
-        "text/csv;charset=utf-8"
+        "application/vnd.ms-excel;charset=utf-8"
       );
       setStatus("Downloaded yearly performance CSV.");
+    }
+
+    function downloadRoundTripsCsv() {
+      if (!latestRoundTrips.length) {
+        setStatus("No completed binary round trips are available to download.", true);
+        return;
+      }
+
+      const config = readFormConfig();
+      const ticker = loadedTicker || getTicker();
+      const csvRows = roundTripCsvRows(ticker, latestRoundTrips);
+      const filename = [
+        ticker,
+        "round_trips",
+        config.maType,
+        String(config.smaWindow)
+      ].join("_").replace(/[^A-Za-z0-9._-]/g, "") + ".csv";
+
+      downloadText(
+        filename,
+        csvRows.map((row) => row.map(csvCell).join(",")).join("\n") + "\n",
+        "application/vnd.ms-excel;charset=utf-8"
+      );
+      setStatus("Downloaded round-trip CSV.");
     }
 
     function roundCents(value) {
@@ -2819,51 +3003,56 @@
       };
     }
 
+    function renderLoadedData(ticker, config, points, source, preservedEndDate) {
+      if (points.length < config.smaWindow + 20) {
+        throw new Error("Not enough data for " + maLabel(config.maType, config.smaWindow) + ".");
+      }
+      currentDataSource = source;
+      const simulation = config.buckets > 2
+        ? simulateQuantizedStrategy(points, config)
+        : simulateStrategy(points, config);
+      const stats = computeStats(simulation.equitySeries, simulation.startingEquity);
+      latestPoints = points;
+      latestMaSeries = simulation.smaSeries;
+      latestSignalSeries = simulation.signalSeries || [];
+      latestEquitySeries = simulation.equitySeries;
+      latestSignalEvents = simulation.signalEvents || [];
+      latestRoundTrips = simulation.roundTrips || [];
+      activeRangeEndIndex = preservedEndDate === null
+        ? null
+        : indexAtOrBeforeDate(points, preservedEndDate);
+      loadedTicker = ticker;
+      renderChartRange(config);
+
+      const latest = points[points.length - 1];
+      const suggestion = config.delta <= 0
+        ? { termDays: 0, estSurvival: 0, rawSurvival: 0 }
+        : chooseSuggestedTerm(points, simulation.smaSeries, simulation.tradeSignalSeries || simulation.signalSeries, config.maType, points.length - 1, config.survivalThreshold, config.delta, simulation.survivalCalibration, config.maxTerm);
+      latestEl.textContent = "Latest close: $" + latest.close.toFixed(2) + " (" + formatDate(latest.date) + ")";
+      dataSourceEl.textContent = currentDataSource || ("Daily prices (" + ticker + ")");
+      metricFinalEl.textContent = formatMoney(stats.finalEquity);
+      metricCagrEl.textContent = formatPercent(stats.cagr);
+      metricMaxDdEl.textContent = formatPercent(stats.maxDrawdown);
+      metricPositionEl.innerHTML = formatPositionMetric(simulation.currentInvestmentLabel, simulation.currentRegime);
+      metricCurrentLabelEl.textContent = isZeroLineSignalType(config.maType) && isLeastSquaresType(config.maType) && !isPredictedLeastSquaresType(config.maType) ? "Price / Slope" : "Current";
+      metricCurrentEl.innerHTML = formatCurrentMetric(points, simulation.smaSeries, simulation.signalSeries, config);
+      metricSuggestedTermEl.textContent = formatSuggestedCallQuote(suggestedCallQuote(points, config, suggestion));
+      metricExpiredOtmEl.textContent = String(simulation.expiredOtmCount) + " | " + formatMoney(simulation.expiredOtmPnl);
+      metricForcedSalesEl.textContent = String(simulation.boughtBackCount) + " | " + formatMoney(simulation.boughtBackPnl);
+      metricCalloutsEl.textContent = String(simulation.assignedCount) + " | " + formatMoney(simulation.assignedPnl);
+      metricTermBreakdownEl.textContent = formatTermBreakdown(simulation.termCounts);
+      metricTimeInMarketEl.textContent = formatPercent(simulation.timeInMarket);
+      metricBracketTransitionsEl.textContent = simulation.transitionCounts ? formatBracketTransitions(simulation.transitionCounts, config.buckets) : "--";
+      return { simulation, stats };
+    }
+
     async function loadData(ticker, config, preserveRange = false) {
-      const dataUrl = buildDataUrl(ticker);
       const preservedEndDate = preserveRange ? visibleRangeEndDate() : null;
       setStatus("Fetching " + ticker + "...");
       try {
-        const { text, source } = await fetchCsv(dataUrl);
+        const { text, source } = await fetchCsv(buildDataUrl(ticker));
         const points = parseCsv(text);
-        if (points.length < config.smaWindow + 20) {
-          throw new Error("Not enough data for " + maLabel(config.maType, config.smaWindow) + ".");
-        }
-        currentDataSource = source;
-        const simulation = config.buckets > 2
-          ? simulateQuantizedStrategy(points, config)
-          : simulateStrategy(points, config);
-        const stats = computeStats(simulation.equitySeries, simulation.startingEquity);
-        latestPoints = points;
-        latestMaSeries = simulation.smaSeries;
-        latestSignalSeries = simulation.signalSeries || [];
-        latestEquitySeries = simulation.equitySeries;
-        latestSignalEvents = simulation.signalEvents || [];
-        activeRangeEndIndex = preservedEndDate === null
-          ? null
-          : indexAtOrBeforeDate(points, preservedEndDate);
-        loadedTicker = ticker;
-        renderChartRange(config);
-
-        const latest = points[points.length - 1];
-        const suggestion = config.delta <= 0
-          ? { termDays: 0, estSurvival: 0, rawSurvival: 0 }
-          : chooseSuggestedTerm(points, simulation.smaSeries, simulation.tradeSignalSeries || simulation.signalSeries, config.maType, points.length - 1, config.survivalThreshold, config.delta, simulation.survivalCalibration, config.maxTerm);
-        latestEl.textContent = "Latest close: $" + latest.close.toFixed(2) + " (" + formatDate(latest.date) + ")";
-        dataSourceEl.textContent = currentDataSource || ("Daily prices (" + ticker + ")");
-        metricFinalEl.textContent = formatMoney(stats.finalEquity);
-        metricCagrEl.textContent = formatPercent(stats.cagr);
-        metricMaxDdEl.textContent = formatPercent(stats.maxDrawdown);
-        metricPositionEl.innerHTML = formatPositionMetric(simulation.currentInvestmentLabel, simulation.currentRegime);
-        metricCurrentLabelEl.textContent = isZeroLineSignalType(config.maType) && isLeastSquaresType(config.maType) && !isPredictedLeastSquaresType(config.maType) ? "Price / Slope" : "Current";
-        metricCurrentEl.innerHTML = formatCurrentMetric(points, simulation.smaSeries, simulation.signalSeries, config);
-        metricSuggestedTermEl.textContent = formatSuggestedCallQuote(suggestedCallQuote(points, config, suggestion));
-        metricExpiredOtmEl.textContent = String(simulation.expiredOtmCount) + " | " + formatMoney(simulation.expiredOtmPnl);
-        metricForcedSalesEl.textContent = String(simulation.boughtBackCount) + " | " + formatMoney(simulation.boughtBackPnl);
-        metricCalloutsEl.textContent = String(simulation.assignedCount) + " | " + formatMoney(simulation.assignedPnl);
-        metricTermBreakdownEl.textContent = formatTermBreakdown(simulation.termCounts);
-        metricTimeInMarketEl.textContent = formatPercent(simulation.timeInMarket);
-        metricBracketTransitionsEl.textContent = simulation.transitionCounts ? formatBracketTransitions(simulation.transitionCounts, config.buckets) : "--";
+        renderLoadedData(ticker, config, points, source, preservedEndDate);
       } catch (error) {
         console.error(error);
         currentDataSource = "";
@@ -2872,6 +3061,7 @@
         latestSignalSeries = [];
         latestEquitySeries = [];
         latestSignalEvents = [];
+        latestRoundTrips = [];
         metricFinalEl.textContent = "$--";
         metricCagrEl.textContent = "--";
         metricMaxDdEl.textContent = "--";
@@ -2898,7 +3088,7 @@
         const allocationDescription = config.maType === "ema_n22n"
           ? "binary 0/100% allocation using the " + maName(config.maType, config.smaWindow)
           : "quantized 0/20/40/60/80/100% allocation using a " + maName(config.maType, config.smaWindow) + " +/- 1 standard-deviation band";
-        subheadEl.textContent = allocationDescription + ", with any decrease applied immediately and any increase delayed by " + config.delayDays + " trading days. Covered calls are sold only against fully covered 100-share lots. Simulation starts 300 trading days in with " + formatMoney(config.startingCapital) + ". Survival is empirically calibrated to historical expired-OTM outcomes.";
+        subheadEl.textContent = allocationDescription + ", with any decrease applied immediately and any increase delayed by " + config.delayDays + " trading days. Floor hold suppresses loss-recovery sells for " + config.whipsawDays + " trading days. Covered calls are sold only against fully covered 100-share lots. Simulation starts 300 trading days in with " + formatMoney(config.startingCapital) + ". Survival is empirically calibrated to historical expired-OTM outcomes.";
       } else {
         document.title = ticker + " covered call backtest";
         eyebrowEl.textContent = ticker + " covered call backtest";
@@ -2906,7 +3096,7 @@
         const termDescription = config.maxTerm === null
           ? "adaptive 20/15/10/5-day terms"
           : "adaptive terms capped at " + config.maxTerm + " days";
-        subheadEl.textContent = "Full-history backtest with " + formatPercent(config.delta) + " delta calls, " + termDescription + " driven by a " + formatPercent(config.survivalThreshold) + " empirically calibrated survival threshold, a " + config.delayDays + "-day cooldown after " + maName(config.maType, config.smaWindow) + " breakdowns, and 4% cash yield while out of market.";
+        subheadEl.textContent = "Full-history backtest with " + formatPercent(config.delta) + " delta calls, " + termDescription + " driven by a " + formatPercent(config.survivalThreshold) + " empirically calibrated survival threshold, a " + config.delayDays + "-day cooldown after " + maName(config.maType, config.smaWindow) + " breakdowns, " + config.whipsawDays + "-day floor hold after loss exits, and 4% cash yield while out of market.";
       }
       dataSourceEl.textContent = currentDataSource || ("Daily prices (" + symbol + ")");
       maLegendLabelEl.textContent = maLabel(config.maType, config.smaWindow);
@@ -2920,6 +3110,7 @@
       delayInput.value = String(config.delayDays);
       optionDaysInput.value = config.survivalThreshold.toFixed(2);
       maxTermInput.value = config.maxTerm === null ? "" : String(config.maxTerm);
+      whipsawInput.value = String(config.whipsawDays);
     }
 
     function buildTargetUrl(raw, config) {
@@ -2932,7 +3123,8 @@
         "&DELAY=" + encodeURIComponent(config.delayDays) +
         "&SURVIVAL_PROB=" + encodeURIComponent(config.survivalThreshold.toFixed(2)) +
         "&BUCKETS=" + encodeURIComponent(config.buckets) +
-        "&STARTING_CAPITAL=" + encodeURIComponent(config.startingCapital.toFixed(2))
+        "&STARTING_CAPITAL=" + encodeURIComponent(config.startingCapital.toFixed(2)) +
+        "&WHIPSAW_DAYS=" + encodeURIComponent(config.whipsawDays)
       );
       return config.maxTerm === null
         ? baseUrl
@@ -2940,8 +3132,9 @@
     }
 
     function readFormConfig() {
+      const smaWindow = Math.max(2, Number.parseInt(smaInput.value || String(DEFAULT_SMA_WINDOW), 10));
       return {
-        smaWindow: Math.max(2, Number.parseInt(smaInput.value || String(DEFAULT_SMA_WINDOW), 10)),
+        smaWindow,
         maType: normalizeMaType(maTypeInput.value || DEFAULT_MA_TYPE),
         delta: Math.min(0.99, Math.max(0, Number.parseFloat(deltaInput.value || String(DEFAULT_DELTA)))),
         delayDays: Math.max(0, Number.parseInt(delayInput.value || String(DEFAULT_DELAY_DAYS), 10)),
@@ -2950,7 +3143,8 @@
           ? null
           : Math.max(1, Number.parseInt(maxTermInput.value, 10) || 1),
         buckets: getBuckets(),
-        startingCapital: getStartingCapital()
+        startingCapital: getStartingCapital(),
+        whipsawDays: Math.max(0, Number.parseInt(whipsawInput.value || String(smaWindow * DEFAULT_WHIPSAW_MULTIPLE), 10) || 0)
       };
     }
 
@@ -2969,15 +3163,17 @@
     }
 
     const ticker = getTicker();
+    const initialSmaWindow = getSmaWindow();
     const config = {
-      smaWindow: getSmaWindow(),
+      smaWindow: initialSmaWindow,
       maType: getMaType(),
       delta: getDelta(),
       delayDays: getDelayDays(),
       survivalThreshold: getSurvivalThreshold(),
       maxTerm: getMaxTerm(),
       buckets: getBuckets(),
-      startingCapital: getStartingCapital()
+      startingCapital: getStartingCapital(),
+      whipsawDays: getWhipsawDays(initialSmaWindow)
     };
     updateRangeButtons();
     updateCopy(ticker, config);
@@ -2995,6 +3191,10 @@
 
     downloadYearlyCsvEl.addEventListener("click", () => {
       downloadYearlyPerformanceCsv();
+    });
+
+    downloadRoundTripsCsvEl.addEventListener("click", () => {
+      downloadRoundTripsCsv();
     });
 
     tickerForm.addEventListener("submit", (event) => {
