@@ -2485,6 +2485,55 @@
       };
     }
 
+    function collectDatasetYValues(dataset) {
+      const values = [];
+      for (const point of dataset.data || []) {
+        const value = typeof point === "number" ? point : point && point.y;
+        if (value !== null && value !== undefined && Number.isFinite(value) && value > 0) {
+          values.push(value);
+        }
+      }
+      return values;
+    }
+
+    function alignedReturnScaleBounds(datasets, startingPrice, startingEquity) {
+      if (!(startingPrice > 0) || !(startingEquity > 0)) {
+        return null;
+      }
+
+      let minRatio = 1;
+      let maxRatio = 1;
+      for (const dataset of datasets) {
+        if (dataset.yAxisID !== "price" && dataset.yAxisID !== "equity") {
+          continue;
+        }
+        const anchor = dataset.yAxisID === "price" ? startingPrice : startingEquity;
+        for (const value of collectDatasetYValues(dataset)) {
+          const ratio = value / anchor;
+          if (Number.isFinite(ratio) && ratio > 0) {
+            minRatio = Math.min(minRatio, ratio);
+            maxRatio = Math.max(maxRatio, ratio);
+          }
+        }
+      }
+
+      let logMin = Math.log(minRatio);
+      let logMax = Math.log(maxRatio);
+      const span = logMax - logMin;
+      const padding = span > 0 ? span * 0.08 : 0.04;
+      logMin -= padding;
+      logMax += padding;
+
+      const paddedMinRatio = Math.exp(logMin);
+      const paddedMaxRatio = Math.exp(logMax);
+      return {
+        priceMin: startingPrice * paddedMinRatio,
+        priceMax: startingPrice * paddedMaxRatio,
+        equityMin: startingEquity * paddedMinRatio,
+        equityMax: startingEquity * paddedMaxRatio
+      };
+    }
+
     function shiftDate(date, months) {
       return new Date(date.getFullYear(), date.getMonth() + months, date.getDate());
     }
@@ -2793,6 +2842,12 @@
         }
       );
 
+      const alignedScales = alignedReturnScaleBounds(
+        datasets,
+        prices.find((value) => Number.isFinite(value) && value > 0),
+        roundedEquity.find((value) => value !== null && Number.isFinite(value) && value > 0)
+      );
+
       chart = new Chart(ctx, {
         type: "line",
         data: {
@@ -2904,6 +2959,8 @@
             price: {
               type: "logarithmic",
               position: "left",
+              min: alignedScales ? alignedScales.priceMin : undefined,
+              max: alignedScales ? alignedScales.priceMax : undefined,
               ticks: {
                 callback: (value) => "$" + value
               },
@@ -2914,6 +2971,8 @@
             equity: {
               type: "logarithmic",
               position: "right",
+              min: alignedScales ? alignedScales.equityMin : undefined,
+              max: alignedScales ? alignedScales.equityMax : undefined,
               ticks: {
                 callback: (value) => "$" + Math.round(value).toLocaleString()
               },
