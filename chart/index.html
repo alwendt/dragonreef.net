@@ -351,6 +351,7 @@
               <select id="ma-type-input" aria-label="Moving average type">
                 <option value="simple">Simple</option>
                 <option value="exponential">Exponential</option>
+                <option value="buy_hold">Buy and Hold</option>
                 <option value="ema_n22n">EMA N/2N Crossover</option>
                 <option value="least_squares">Least Squares Slope</option>
                 <option value="exp_weighted_least_squares">Exp Weighted LS Slope</option>
@@ -570,6 +571,9 @@
 
     function normalizeMaType(value) {
       const normalized = String(value || "").trim().toLowerCase();
+      if (normalized === "buy_hold" || normalized === "buy-hold" || normalized === "buy and hold" || normalized === "buyhold" || normalized === "hold") {
+        return "buy_hold";
+      }
       if (normalized === "ema" || normalized === "exponential") {
         return "exponential";
       }
@@ -592,6 +596,10 @@
         return "quadratic_least_squares";
       }
       return "simple";
+    }
+
+    function isBuyHoldType(type) {
+      return type === "buy_hold";
     }
 
     function isLeastSquaresType(type) {
@@ -623,6 +631,9 @@
     }
 
     function maLabel(type, window) {
+      if (isBuyHoldType(type)) {
+        return "Buy and Hold";
+      }
       if (type === "exponential") {
         return "EMA " + window;
       }
@@ -648,6 +659,9 @@
     }
 
     function maName(type, window) {
+      if (isBuyHoldType(type)) {
+        return "buy-and-hold";
+      }
       if (type === "exponential") {
         return "exponential moving average";
       }
@@ -1620,6 +1634,51 @@
       return targetFractionLinear(price, maValue, stdDev);
     }
 
+    function simulateBuyAndHold(points, config) {
+      const startingPrice = points.length ? points[0].close : 0;
+      const equitySeries = points.map((point) => (
+        startingPrice > 0 ? config.startingCapital * (point.close / startingPrice) : null
+      ));
+      const termCounts = {
+        0: 0,
+        5: 0,
+        10: 0,
+        15: 0,
+        20: 0
+      };
+      const transitionCounts = {
+        "0%": 0,
+        "20%": 0,
+        "40%": 0,
+        "60%": 0,
+        "80%": 0,
+        "100%": 0
+      };
+
+      return {
+        startingEquity: config.startingCapital,
+        smaSeries: points.map(() => null),
+        signalSeries: points.map(() => null),
+        tradeSignalSeries: points.map(() => null),
+        equitySeries,
+        currentRegime: "Buy and hold",
+        currentInvestmentLabel: "100%",
+        survivalCalibration: null,
+        sales: 0,
+        expiredOtmCount: 0,
+        expiredOtmPnl: 0,
+        boughtBackCount: 0,
+        boughtBackPnl: 0,
+        assignedCount: 0,
+        assignedPnl: 0,
+        termCounts,
+        transitionCounts,
+        timeInMarket: points.length > 0 ? 1 : 0,
+        signalEvents: [],
+        roundTrips: []
+      };
+    }
+
       function simulateStrategy(points, config) {
       const maSeries = computeMa(points, config.smaWindow, config.maType);
       const signalSeries = computeSignalSeries(points, config.smaWindow, config.maType);
@@ -2102,6 +2161,18 @@
         currency: "USD",
         minimumFractionDigits: 2,
         maximumFractionDigits: 2
+      });
+    }
+
+    function formatAxisMoney(value) {
+      const numeric = Number(value);
+      if (!Number.isFinite(numeric)) {
+        return "";
+      }
+      return numeric.toLocaleString(undefined, {
+        style: "currency",
+        currency: "USD",
+        maximumFractionDigits: Math.abs(numeric) < 1000 ? 2 : 0
       });
     }
 
@@ -2702,7 +2773,7 @@
         }
       ];
 
-      if (!isLeastSquaresType(config.maType) && config.maType !== "ema_n22n") {
+      if (!isBuyHoldType(config.maType) && !isLeastSquaresType(config.maType) && config.maType !== "ema_n22n") {
         datasets.push({
           label: maLabel(config.maType, config.smaWindow),
           data: roundedMaSeries,
@@ -2962,7 +3033,7 @@
               min: alignedScales ? alignedScales.priceMin : undefined,
               max: alignedScales ? alignedScales.priceMax : undefined,
               ticks: {
-                callback: (value) => "$" + value
+                callback: (value) => formatAxisMoney(value)
               },
               grid: {
                 color: "rgba(11, 26, 42, 0.06)"
@@ -2974,7 +3045,7 @@
               min: alignedScales ? alignedScales.equityMin : undefined,
               max: alignedScales ? alignedScales.equityMax : undefined,
               ticks: {
-                callback: (value) => "$" + Math.round(value).toLocaleString()
+                callback: (value) => formatAxisMoney(value)
               },
               grid: {
                 drawOnChartArea: false
@@ -3063,11 +3134,13 @@
     }
 
     function renderLoadedData(ticker, config, points, source, preservedEndDate) {
-      if (points.length < config.smaWindow + 20) {
+      if (isBuyHoldType(config.maType) ? points.length < 2 : points.length < config.smaWindow + 20) {
         throw new Error("Not enough data for " + maLabel(config.maType, config.smaWindow) + ".");
       }
       currentDataSource = source;
-      const simulation = config.buckets > 2
+      const simulation = isBuyHoldType(config.maType)
+        ? simulateBuyAndHold(points, config)
+        : config.buckets > 2
         ? simulateQuantizedStrategy(points, config)
         : simulateStrategy(points, config);
       const stats = computeStats(simulation.equitySeries, simulation.startingEquity);
@@ -3084,7 +3157,7 @@
       renderChartRange(config);
 
       const latest = points[points.length - 1];
-      const suggestion = config.delta <= 0
+      const suggestion = isBuyHoldType(config.maType) || config.delta <= 0
         ? { termDays: 0, estSurvival: 0, rawSurvival: 0 }
         : chooseSuggestedTerm(points, simulation.smaSeries, simulation.tradeSignalSeries || simulation.signalSeries, config.maType, points.length - 1, config.survivalThreshold, config.delta, simulation.survivalCalibration, config.maxTerm);
       latestEl.textContent = "Latest close: $" + latest.close.toFixed(2) + " (" + formatDate(latest.date) + ")";
@@ -3140,7 +3213,12 @@
 
     function updateCopy(ticker, config) {
       const symbol = resolveSymbol(ticker);
-      if (config.buckets > 2) {
+      if (isBuyHoldType(config.maType)) {
+        document.title = ticker + " buy-and-hold backtest";
+        eyebrowEl.textContent = ticker + " buy-and-hold backtest";
+        headlineEl.textContent = ticker + " buy-and-hold benchmark";
+        subheadEl.textContent = "Full-history buy-and-hold benchmark using " + formatMoney(config.startingCapital) + " of starting capital and no covered-call overlay, sell signals, cooldowns, or floor-hold rules.";
+      } else if (config.buckets > 2) {
         document.title = ticker + " quantized covered call backtest";
         eyebrowEl.textContent = ticker + " quantized covered call backtest";
         headlineEl.textContent = ticker + " quantized strategy with " + maLabel(config.maType, config.smaWindow);
@@ -3159,8 +3237,8 @@
       }
       dataSourceEl.textContent = currentDataSource || ("Daily prices (" + symbol + ")");
       maLegendLabelEl.textContent = maLabel(config.maType, config.smaWindow);
-      maLegendEl.classList.toggle("hidden", isLeastSquaresType(config.maType));
-      slopeLegendEl.classList.toggle("hidden", !isLeastSquaresType(config.maType));
+      maLegendEl.classList.toggle("hidden", isBuyHoldType(config.maType) || isLeastSquaresType(config.maType));
+      slopeLegendEl.classList.toggle("hidden", isBuyHoldType(config.maType) || !isLeastSquaresType(config.maType));
       slopeLegendLabelEl.textContent = signalLabel(config.maType);
       tickerInput.value = ticker;
       smaInput.value = String(config.smaWindow);
