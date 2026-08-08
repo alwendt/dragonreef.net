@@ -1510,13 +1510,6 @@
       return callPrice(spot, activeOption.strike, timeToExpiry, CASH_RATE, activeOption.sigma);
     }
 
-    function transitionBucketKey(fraction) {
-      if (fraction <= 0) {
-        return "0%";
-      }
-      return Math.round(fraction * 100) + "%";
-    }
-
     function escapeHtml(value) {
       return String(value)
         .replace(/&/g, "&amp;")
@@ -1553,10 +1546,6 @@
       };
       const transitionCounts = {
         "0%": 0,
-        "20%": 0,
-        "40%": 0,
-        "60%": 0,
-        "80%": 0,
         "100%": 0
       };
 
@@ -1636,10 +1625,6 @@
       };
       const transitionCounts = {
         "0%": 0,
-        "20%": 0,
-        "40%": 0,
-        "60%": 0,
-        "80%": 0,
         "100%": 0
       };
 
@@ -1863,8 +1848,7 @@
     }
 
     function formatBracketTransitions(transitionCounts) {
-      return [0, 1]
-        .map((bucket) => transitionBucketKey(bucket))
+      return ["0%", "100%"]
         .map((key) => key + ": " + (transitionCounts[key] || 0))
         .join(" | ");
     }
