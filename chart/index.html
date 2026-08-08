@@ -487,10 +487,8 @@
     const DEFAULT_DELAY_DAYS = 10;
     const DEFAULT_DELTA = 0.20;
     const DEFAULT_SURVIVAL_THRESHOLD = 0.50;
-    const DEFAULT_BUCKETS = 2;
     const DEFAULT_STARTING_CAPITAL = 10000;
     const DEFAULT_WHIPSAW_MULTIPLE = 2;
-    const QCHART_START_INDEX = 300;
     const CASH_RATE = 0.04;
     const DAYS_PER_YEAR = 252;
     let chart;
@@ -730,11 +728,6 @@
         smaWindow * DEFAULT_WHIPSAW_MULTIPLE,
         0
       );
-    }
-
-    function getBuckets() {
-      const parsed = parseIntParam(["BUCKETS", "buckets"], DEFAULT_BUCKETS, 2);
-      return Math.min(10, Math.max(2, parsed));
     }
 
     function getDelta() {
@@ -1110,28 +1103,6 @@
         segmentData.push(...segments[i]);
       }
       return segmentData;
-    }
-
-    function computeCloseStd(points, windowSize) {
-      const stdSeries = new Array(points.length).fill(null);
-      let sum = 0;
-      let sumSquares = 0;
-      for (let i = 0; i < points.length; i += 1) {
-        const value = points[i].close;
-        sum += value;
-        sumSquares += value * value;
-        if (i >= windowSize) {
-          const oldValue = points[i - windowSize].close;
-          sum -= oldValue;
-          sumSquares -= oldValue * oldValue;
-        }
-        if (i >= windowSize - 1) {
-          const mean = sum / windowSize;
-          const variance = Math.max(0, (sumSquares / windowSize) - (mean * mean));
-          stdSeries[i] = Math.sqrt(variance);
-        }
-      }
-      return stdSeries;
     }
 
     function erfApprox(x) {
@@ -1539,20 +1510,6 @@
       return callPrice(spot, activeOption.strike, timeToExpiry, CASH_RATE, activeOption.sigma);
     }
 
-    function formatInvestmentBucket(fraction) {
-      if (fraction <= 0) {
-        return "All Cash";
-      }
-      return Math.round(fraction * 100) + "%";
-    }
-
-    function formatHoldingBucket(fraction) {
-      if (fraction <= 0) {
-        return "holding at all cash";
-      }
-      return "holding at " + Math.round(fraction * 100) + "%";
-    }
-
     function transitionBucketKey(fraction) {
       if (fraction <= 0) {
         return "0%";
@@ -1580,58 +1537,6 @@
         regimeLower === (primaryLower + " invested");
       const secondary = redundant ? "" : '<div class="metric-secondary">' + escapeHtml(regime) + "</div>";
       return escapeHtml(primary) + secondary;
-    }
-
-    function bucketFractions(bucketCount) {
-      if (bucketCount <= 2) {
-        return [0, 1];
-      }
-      const fractions = [];
-      for (let i = 0; i < bucketCount; i += 1) {
-        fractions.push(i / (bucketCount - 1));
-      }
-      return fractions;
-    }
-
-    function quantizeFraction(fraction, buckets) {
-      let best = buckets[0];
-      let bestError = Number.POSITIVE_INFINITY;
-      for (const bucket of buckets) {
-        const error = Math.abs(bucket - fraction);
-        if (error < bestError) {
-          bestError = error;
-          best = bucket;
-        }
-      }
-      return best;
-    }
-
-    function targetFractionLinear(price, sma, stdDev) {
-      if (sma === null) {
-        return 1;
-      }
-      if (stdDev === null || stdDev <= 1e-12) {
-        return price >= sma ? 1 : 0;
-      }
-      const low = sma - stdDev;
-      const high = sma + stdDev;
-      if (price <= low) {
-        return 0;
-      }
-      if (price >= high) {
-        return 1;
-      }
-      return (price - low) / (high - low);
-    }
-
-    function targetFractionForSignal(price, maValue, stdDev, signalValue, config, currentFraction) {
-      if (isLeastSquaresType(config.maType) || config.maType === "ema_n22n") {
-        if (!hasTradeSignal(signalValue)) {
-          return currentFraction === null ? 0 : currentFraction;
-        }
-        return isBuySignal(price, signalValue, config.maType) ? 1 : 0;
-      }
-      return targetFractionLinear(price, maValue, stdDev);
     }
 
     function simulateBuyAndHold(points, config) {
@@ -1947,181 +1852,6 @@
       };
     }
 
-    function simulateQuantizedStrategy(points, config) {
-      const maSeries = computeMa(points, config.smaWindow, config.maType);
-      const signalSeries = computeSignalSeries(points, config.smaWindow, config.maType);
-      const tradeSignalSeries = computeTradeSignalSeries(points, maSeries, signalSeries, config);
-      const survivalCalibration = buildSurvivalCalibration(points, maSeries, tradeSignalSeries, config.maType, config.delta);
-      const stdSeries = computeCloseStd(points, config.smaWindow);
-      const buckets = bucketFractions(config.buckets);
-      const equitySeries = new Array(points.length).fill(null);
-      let cash = config.startingCapital;
-      let shares = 0;
-      let activeOption = null;
-      let actualFraction = null;
-      let cooldownUntil = -1;
-      let sales = 0;
-      let expiredOtmCount = 0;
-      let expiredOtmPnl = 0;
-      let boughtBackCount = 0;
-      let boughtBackPnl = 0;
-      let assignedCount = 0;
-      let assignedPnl = 0;
-      let allocatedFractionDays = 0;
-      let currentRegime = "All Cash";
-      let currentInvestmentLabel = "All Cash";
-      let previousActualFraction = null;
-      let openRoundTripPurchasePrice = null;
-      let lastCompletedRoundTripSalePrice = null;
-      let lastCompletedRoundTripSaleIndex = null;
-      let lastCompletedRoundTripLostMoney = false;
-      const signalEvents = [];
-      const termCounts = {
-        0: 0,
-        5: 0,
-        10: 0,
-        15: 0,
-        20: 0
-      };
-      const transitionCounts = Object.fromEntries(buckets.map((bucket) => [transitionBucketKey(bucket), 0]));
-
-      for (let i = QCHART_START_INDEX; i < points.length; i += 1) {
-        const price = points[i].close;
-
-        if (activeOption && activeOption.expirationIndex === i) {
-          const itmShares = activeOption.contracts * 100;
-          const premiumDollars = itmShares * activeOption.premium;
-          if (price > activeOption.strike) {
-            assignedCount += activeOption.contracts;
-            assignedPnl += premiumDollars + itmShares * activeOption.strike - itmShares * price;
-          } else {
-            expiredOtmCount += activeOption.contracts;
-            expiredOtmPnl += premiumDollars;
-          }
-          cash -= itmShares * Math.max(0, price - activeOption.strike);
-          activeOption = null;
-        }
-
-        const rawFraction = quantizeFraction(targetFractionForSignal(price, maSeries[i], stdSeries[i], tradeSignalSeries[i], config, actualFraction), buckets);
-        const suppressSaleAfterLoss = config.whipsawDays > 0 &&
-          lastCompletedRoundTripLostMoney &&
-          lastCompletedRoundTripSalePrice !== null &&
-          lastCompletedRoundTripSaleIndex !== null &&
-          i - lastCompletedRoundTripSaleIndex <= config.whipsawDays &&
-          price > lastCompletedRoundTripSalePrice;
-        if (actualFraction === null) {
-          actualFraction = rawFraction;
-          if (actualFraction > 0) {
-            openRoundTripPurchasePrice = price;
-          }
-        } else if (rawFraction < actualFraction && !suppressSaleAfterLoss) {
-          actualFraction = rawFraction;
-          lastCompletedRoundTripSalePrice = price;
-          lastCompletedRoundTripSaleIndex = i;
-          lastCompletedRoundTripLostMoney = openRoundTripPurchasePrice !== null && price < openRoundTripPurchasePrice;
-          cooldownUntil = i + config.delayDays;
-        } else if (rawFraction > actualFraction && i >= cooldownUntil) {
-          actualFraction = rawFraction;
-          openRoundTripPurchasePrice = price;
-        }
-
-        if (rawFraction > actualFraction && i < cooldownUntil) {
-          currentInvestmentLabel = formatHoldingBucket(actualFraction);
-        } else {
-          currentInvestmentLabel = formatInvestmentBucket(actualFraction);
-        }
-        if (previousActualFraction !== null && actualFraction !== previousActualFraction) {
-          transitionCounts[transitionBucketKey(actualFraction)] += 1;
-          signalEvents.push({
-            date: points[i].date,
-            price,
-            action: actualFraction > previousActualFraction ? "Buy" : "Sell",
-            reason: (actualFraction > previousActualFraction ? "Increase" : "Reduce") + " investment to " + formatInvestmentBucket(actualFraction)
-          });
-        }
-        previousActualFraction = actualFraction;
-        currentRegime = actualFraction > 0 && rawFraction < actualFraction && suppressSaleAfterLoss
-          ? "Floor hold"
-          : (actualFraction > 0 ? (Math.round(actualFraction * 100) + "% invested") : "All Cash");
-
-        const currentOptionValue = activeOption ? optionMarketValue(activeOption, price, i) : 0;
-        const currentOptionLiability = activeOption ? (activeOption.contracts * 100 * currentOptionValue) : 0;
-        const equityBefore = cash + shares * price - currentOptionLiability;
-        const targetShares = price > 0 ? ((equityBefore * actualFraction) / price) : 0;
-        const shareDelta = targetShares - shares;
-        cash -= shareDelta * price;
-        shares = targetShares;
-
-        if (activeOption) {
-          const optionValue = optionMarketValue(activeOption, price, i);
-          const maxContracts = Math.floor(shares / 100);
-          if (activeOption.contracts > maxContracts) {
-            const reducedContracts = activeOption.contracts - maxContracts;
-            boughtBackCount += reducedContracts;
-            boughtBackPnl += reducedContracts * 100 * activeOption.premium - reducedContracts * 100 * optionValue;
-            cash -= reducedContracts * 100 * optionValue;
-            activeOption.contracts = maxContracts;
-            if (activeOption.contracts <= 0) {
-              activeOption = null;
-            }
-          }
-        }
-
-        if (cash > 0) {
-          cash *= 1 + CASH_RATE / DAYS_PER_YEAR;
-        }
-
-        const coveredContracts = Math.floor(shares / 100);
-        if (!activeOption) {
-          const termDays = config.delta <= 0 ? 0 : chooseSuggestedTerm(points, maSeries, tradeSignalSeries, config.maType, i, config.survivalThreshold, config.delta, survivalCalibration, config.maxTerm).termDays;
-          termCounts[termDays] += coveredContracts > 0 ? coveredContracts : 1;
-          if (termDays > 0 && coveredContracts > 0) {
-            const expirationIndex = Math.min(i + termDays, points.length - 1);
-            const timeToExpiry = Math.max((expirationIndex - i) / DAYS_PER_YEAR, 1 / DAYS_PER_YEAR);
-            const sigma = estimateSigma(points, i);
-            const strike = roundOptionStrike(findStrike(price, timeToExpiry, CASH_RATE, sigma, config.delta));
-            const premium = callPrice(price, strike, timeToExpiry, CASH_RATE, sigma);
-            cash += coveredContracts * 100 * premium;
-            sales += coveredContracts;
-            activeOption = {
-              contracts: coveredContracts,
-              strike,
-              sigma,
-              expirationIndex,
-              premium
-            };
-          }
-        }
-
-        const liveOptionValue = activeOption ? optionMarketValue(activeOption, price, i) : 0;
-        const liveLiability = activeOption ? (activeOption.contracts * 100 * liveOptionValue) : 0;
-        equitySeries[i] = cash + shares * price - liveLiability;
-        allocatedFractionDays += actualFraction;
-      }
-
-      return {
-        startingEquity: config.startingCapital,
-        smaSeries: maSeries,
-        signalSeries,
-        tradeSignalSeries,
-        equitySeries,
-        currentRegime,
-        currentInvestmentLabel,
-        survivalCalibration,
-        sales,
-        expiredOtmCount,
-        expiredOtmPnl,
-        boughtBackCount,
-        boughtBackPnl,
-        assignedCount,
-        assignedPnl,
-        termCounts,
-        transitionCounts,
-        timeInMarket: points.length > QCHART_START_INDEX ? (allocatedFractionDays / (points.length - QCHART_START_INDEX)) : 0,
-        signalEvents
-      };
-    }
-
     function formatTermBreakdown(termCounts) {
       return [
         "20d: " + termCounts[20],
@@ -2132,8 +1862,8 @@
       ].join(" | ");
     }
 
-    function formatBracketTransitions(transitionCounts, bucketCount) {
-      return bucketFractions(bucketCount)
+    function formatBracketTransitions(transitionCounts) {
+      return [0, 1]
         .map((bucket) => transitionBucketKey(bucket))
         .map((key) => key + ": " + (transitionCounts[key] || 0))
         .join(" | ");
@@ -3140,8 +2870,6 @@
       currentDataSource = source;
       const simulation = isBuyHoldType(config.maType)
         ? simulateBuyAndHold(points, config)
-        : config.buckets > 2
-        ? simulateQuantizedStrategy(points, config)
         : simulateStrategy(points, config);
       const stats = computeStats(simulation.equitySeries, simulation.startingEquity);
       latestPoints = points;
@@ -3174,7 +2902,7 @@
       metricCalloutsEl.textContent = String(simulation.assignedCount) + " | " + formatMoney(simulation.assignedPnl);
       metricTermBreakdownEl.textContent = formatTermBreakdown(simulation.termCounts);
       metricTimeInMarketEl.textContent = formatPercent(simulation.timeInMarket);
-      metricBracketTransitionsEl.textContent = simulation.transitionCounts ? formatBracketTransitions(simulation.transitionCounts, config.buckets) : "--";
+      metricBracketTransitionsEl.textContent = simulation.transitionCounts ? formatBracketTransitions(simulation.transitionCounts) : "--";
       return { simulation, stats };
     }
 
@@ -3218,14 +2946,6 @@
         eyebrowEl.textContent = ticker + " buy-and-hold backtest";
         headlineEl.textContent = ticker + " buy-and-hold benchmark";
         subheadEl.textContent = "Full-history buy-and-hold benchmark using " + formatMoney(config.startingCapital) + " of starting capital and no covered-call overlay, sell signals, cooldowns, or floor-hold rules.";
-      } else if (config.buckets > 2) {
-        document.title = ticker + " quantized covered call backtest";
-        eyebrowEl.textContent = ticker + " quantized covered call backtest";
-        headlineEl.textContent = ticker + " quantized strategy with " + maLabel(config.maType, config.smaWindow);
-        const allocationDescription = config.maType === "ema_n22n"
-          ? "binary 0/100% allocation using the " + maName(config.maType, config.smaWindow)
-          : "quantized 0/20/40/60/80/100% allocation using a " + maName(config.maType, config.smaWindow) + " +/- 1 standard-deviation band";
-        subheadEl.textContent = allocationDescription + ", with any decrease applied immediately and any increase delayed by " + config.delayDays + " trading days. Floor hold suppresses loss-recovery sells for " + config.whipsawDays + " trading days. Covered calls are sold only against fully covered 100-share lots. Simulation starts 300 trading days in with " + formatMoney(config.startingCapital) + ". Survival is empirically calibrated to historical expired-OTM outcomes.";
       } else {
         document.title = ticker + " covered call backtest";
         eyebrowEl.textContent = ticker + " covered call backtest";
@@ -3259,7 +2979,6 @@
         "&DELTA=" + encodeURIComponent(config.delta.toFixed(2)) +
         "&DELAY=" + encodeURIComponent(config.delayDays) +
         "&SURVIVAL_PROB=" + encodeURIComponent(config.survivalThreshold.toFixed(2)) +
-        "&BUCKETS=" + encodeURIComponent(config.buckets) +
         "&STARTING_CAPITAL=" + encodeURIComponent(config.startingCapital.toFixed(2)) +
         "&WHIPSAW_DAYS=" + encodeURIComponent(config.whipsawDays)
       );
@@ -3279,7 +2998,6 @@
         maxTerm: maxTermInput.value.trim() === ""
           ? null
           : Math.max(1, Number.parseInt(maxTermInput.value, 10) || 1),
-        buckets: getBuckets(),
         startingCapital: getStartingCapital(),
         whipsawDays: Math.max(0, Number.parseInt(whipsawInput.value || String(smaWindow * DEFAULT_WHIPSAW_MULTIPLE), 10) || 0)
       };
@@ -3308,7 +3026,6 @@
       delayDays: getDelayDays(),
       survivalThreshold: getSurvivalThreshold(),
       maxTerm: getMaxTerm(),
-      buckets: getBuckets(),
       startingCapital: getStartingCapital(),
       whipsawDays: getWhipsawDays(initialSmaWindow)
     };

@@ -4,7 +4,6 @@ import path from "node:path";
 
 const CASH_RATE = 0.04;
 const DAYS_PER_YEAR = 252;
-const QCHART_START_INDEX = 300;
 
 const DEFAULTS = {
   csv: "/home/alan/investing/chart-cache/QQQ.csv",
@@ -16,8 +15,7 @@ const DEFAULTS = {
   delta: 0.26,
   delayDays: 6,
   survivalProb: 0.47,
-  startingCapital: 12494.00,
-  buckets: 2
+  startingCapital: 12494.00
 };
 
 function parseArgs(argv) {
@@ -62,9 +60,6 @@ function parseArgs(argv) {
         break;
       case "--starting-capital":
         args.startingCapital = Number(next);
-        break;
-      case "--buckets":
-        args.buckets = Number(next);
         break;
       default:
         throw new Error(`unknown option ${key}`);
@@ -402,55 +397,6 @@ function isSellSignal(signal) {
   return signal !== null && Number.isFinite(signal) && signal < 0;
 }
 
-function computeCloseStd(points, windowSize) {
-  const stdSeries = new Array(points.length).fill(null);
-  let sum = 0;
-  let sumSquares = 0;
-  for (let i = 0; i < points.length; i += 1) {
-    const value = points[i].close;
-    sum += value;
-    sumSquares += value * value;
-    if (i >= windowSize) {
-      const outgoing = points[i - windowSize].close;
-      sum -= outgoing;
-      sumSquares -= outgoing * outgoing;
-    }
-    if (i >= windowSize - 1) {
-      const mean = sum / windowSize;
-      const variance = Math.max(0, (sumSquares / windowSize) - (mean * mean));
-      stdSeries[i] = Math.sqrt(variance);
-    }
-  }
-  return stdSeries;
-}
-
-function bucketFractions(bucketCount) {
-  if (bucketCount <= 2) {
-    return [0, 1];
-  }
-  return Array.from({ length: bucketCount }, (_, index) => index / (bucketCount - 1));
-}
-
-function quantizeFraction(fraction, buckets) {
-  let best = buckets[0];
-  let bestError = Number.POSITIVE_INFINITY;
-  for (const bucket of buckets) {
-    const error = Math.abs(bucket - fraction);
-    if (error < bestError) {
-      bestError = error;
-      best = bucket;
-    }
-  }
-  return best;
-}
-
-function targetFractionForSignal(signalValue, currentFraction) {
-  if (signalValue === null || !Number.isFinite(signalValue)) {
-    return currentFraction === null ? 0 : currentFraction;
-  }
-  return isBuySignal(signalValue) ? 1 : 0;
-}
-
 function buildSurvivalCalibration(points, maSeries, signalSeries, risk, delta) {
   if (!(delta > 0)) {
     return null;
@@ -609,106 +555,6 @@ function simulateBinary(points, period, config, risk) {
   return computeStats(equitySeries, config.startingCapital);
 }
 
-function simulateQuantized(points, period, config, risk) {
-  const { maSeries, signalSeries } = computeStrategySeries(points, period, config);
-  const survivalCalibration = buildSurvivalCalibration(points, maSeries, signalSeries, risk, config.delta);
-  const stdSeries = computeCloseStd(points, period);
-  const buckets = bucketFractions(config.buckets);
-  const equitySeries = new Array(points.length).fill(null);
-  let cash = config.startingCapital;
-  let shares = 0;
-  let activeOption = null;
-  let actualFraction = null;
-  let cooldownUntil = -1;
-  let openRoundTripPurchasePrice = null;
-  let lastCompletedRoundTripSalePrice = null;
-  let lastCompletedRoundTripSaleIndex = null;
-  let lastCompletedRoundTripLostMoney = false;
-
-  for (let i = QCHART_START_INDEX; i < points.length; i += 1) {
-    const price = points[i].close;
-
-    if (activeOption && activeOption.expirationIndex === i) {
-      const itmShares = activeOption.contracts * 100;
-      cash -= itmShares * Math.max(0, price - activeOption.strike);
-      activeOption = null;
-    }
-
-    const rawFraction = quantizeFraction(targetFractionForSignal(signalSeries[i], actualFraction), buckets);
-    const suppressSaleAfterLoss = lastCompletedRoundTripLostMoney &&
-      lastCompletedRoundTripSalePrice !== null &&
-      lastCompletedRoundTripSaleIndex !== null &&
-      i - lastCompletedRoundTripSaleIndex <= period * 2 &&
-      price > lastCompletedRoundTripSalePrice;
-
-    if (actualFraction === null) {
-      actualFraction = rawFraction;
-      if (actualFraction > 0) {
-        openRoundTripPurchasePrice = price;
-      }
-    } else if (rawFraction < actualFraction && !suppressSaleAfterLoss) {
-      actualFraction = rawFraction;
-      lastCompletedRoundTripSalePrice = price;
-      lastCompletedRoundTripSaleIndex = i;
-      lastCompletedRoundTripLostMoney = openRoundTripPurchasePrice !== null && price < openRoundTripPurchasePrice;
-      cooldownUntil = i + config.delayDays;
-    } else if (rawFraction > actualFraction && i >= cooldownUntil) {
-      actualFraction = rawFraction;
-      openRoundTripPurchasePrice = price;
-    }
-
-    const currentOptionValue = activeOption ? optionMarketValue(activeOption, price, i) : 0;
-    const currentOptionLiability = activeOption ? (activeOption.contracts * 100 * currentOptionValue) : 0;
-    const equityBefore = cash + shares * price - currentOptionLiability;
-    const targetShares = price > 0 ? ((equityBefore * actualFraction) / price) : 0;
-    const shareDelta = targetShares - shares;
-    cash -= shareDelta * price;
-    shares = targetShares;
-
-    if (activeOption) {
-      const optionValue = optionMarketValue(activeOption, price, i);
-      const maxContracts = Math.floor(shares / 100);
-      if (activeOption.contracts > maxContracts) {
-        const reducedContracts = activeOption.contracts - maxContracts;
-        cash -= reducedContracts * 100 * optionValue;
-        activeOption.contracts = maxContracts;
-        if (activeOption.contracts <= 0) {
-          activeOption = null;
-        }
-      }
-    }
-
-    if (cash > 0) {
-      cash *= 1 + CASH_RATE / DAYS_PER_YEAR;
-    }
-
-    const coveredContracts = Math.floor(shares / 100);
-    if (!activeOption) {
-      const termDays = config.delta <= 0 ? 0 : chooseSuggestedTerm(points, maSeries, signalSeries, risk, i, config.survivalProb, config.delta, survivalCalibration);
-      if (termDays > 0 && coveredContracts > 0) {
-        const expirationIndex = Math.min(i + termDays, points.length - 1);
-        const timeToExpiry = Math.max((expirationIndex - i) / DAYS_PER_YEAR, 1 / DAYS_PER_YEAR);
-        const sigma = risk.sigma[i];
-        const strike = findStrike(price, timeToExpiry, CASH_RATE, sigma, config.delta);
-        const premium = callPrice(price, strike, timeToExpiry, CASH_RATE, sigma);
-        cash += coveredContracts * 100 * premium;
-        activeOption = {
-          contracts: coveredContracts,
-          strike,
-          sigma,
-          expirationIndex
-        };
-      }
-    }
-
-    const liveOptionValue = activeOption ? optionMarketValue(activeOption, price, i) : 0;
-    const liveLiability = activeOption ? (activeOption.contracts * 100 * liveOptionValue) : 0;
-    equitySeries[i] = cash + shares * price - liveLiability;
-  }
-
-  return computeStats(equitySeries, config.startingCapital);
-}
-
 function computeStats(equitySeries, startingEquity) {
   const values = equitySeries.filter((value) => value !== null);
   const finalEquity = values.at(-1);
@@ -741,9 +587,7 @@ function main() {
   const rows = [["period", "cagr", "max_drawdown", "cagr_pct", "max_drawdown_pct"]];
   const results = [];
   for (let period = args.minPeriod; period <= args.maxPeriod; period += args.step) {
-    const stats = args.buckets > 2
-      ? simulateQuantized(points, period, args, risk)
-      : simulateBinary(points, period, args, risk);
+    const stats = simulateBinary(points, period, args, risk);
     results.push({ period, ...stats });
     rows.push([
       period,
