@@ -1258,19 +1258,22 @@
       return mean * DAYS_PER_YEAR;
     }
 
-    function forcedSaleProbability(price, movingAverage, sigmaAnn, muAnn, days) {
+    function forcedSaleProbability(price, sellBoundary, sigmaAnn, muAnn, days) {
       if (days <= 0) {
         return 0;
       }
-      if (!(price > 0) || !(movingAverage > 0)) {
+      if (!(price > 0)) {
         return 1;
       }
-      if (price <= movingAverage) {
+      if (!(sellBoundary > 0)) {
+        return 0;
+      }
+      if (price <= sellBoundary) {
         return 1;
       }
 
       const time = days / DAYS_PER_YEAR;
-      const distance = Math.log(price / movingAverage);
+      const distance = Math.log(price / sellBoundary);
 
       if (sigmaAnn < 1e-12) {
         if (muAnn >= 0) {
@@ -1368,16 +1371,198 @@
       };
     }
 
+    function fitEmpiricalCalibration(samples) {
+      if (!samples || samples.length < 20) {
+        return fitQuadraticCalibration(samples);
+      }
+
+      const sorted = samples
+        .filter((sample) => Number.isFinite(sample.raw) && (sample.outcome === 0 || sample.outcome === 1))
+        .sort((a, b) => a.raw - b.raw);
+      if (sorted.length < 20) {
+        return fitQuadraticCalibration(sorted);
+      }
+
+      const targetBucketCount = 24;
+      const bucketSize = Math.max(8, Math.floor(sorted.length / targetBucketCount));
+      const buckets = [];
+      for (let start = 0; start < sorted.length; start += bucketSize) {
+        const bucketSamples = sorted.slice(start, Math.min(sorted.length, start + bucketSize));
+        if (bucketSamples.length < 4) {
+          const prior = buckets[buckets.length - 1];
+          if (prior) {
+            for (const sample of bucketSamples) {
+              prior.rawSum += sample.raw;
+              prior.outcomeSum += sample.outcome;
+              prior.count += 1;
+            }
+          }
+          continue;
+        }
+        buckets.push({
+          rawSum: bucketSamples.reduce((sum, sample) => sum + sample.raw, 0),
+          outcomeSum: bucketSamples.reduce((sum, sample) => sum + sample.outcome, 0),
+          count: bucketSamples.length
+        });
+      }
+
+      const blocks = [];
+      for (const bucket of buckets) {
+        blocks.push({ ...bucket });
+        while (blocks.length >= 2) {
+          const last = blocks[blocks.length - 1];
+          const prior = blocks[blocks.length - 2];
+          const lastRate = last.outcomeSum / last.count;
+          const priorRate = prior.outcomeSum / prior.count;
+          if (priorRate <= lastRate) {
+            break;
+          }
+          prior.rawSum += last.rawSum;
+          prior.outcomeSum += last.outcomeSum;
+          prior.count += last.count;
+          blocks.pop();
+        }
+      }
+
+      const knots = blocks.map((block) => ({
+        raw: block.rawSum / block.count,
+        calibrated: block.outcomeSum / block.count,
+        count: block.count
+      }));
+      if (knots.length < 2) {
+        return fitQuadraticCalibration(sorted);
+      }
+
+      return {
+        type: "empirical",
+        knots,
+        sampleCount: sorted.length
+      };
+    }
+
     function calibratedProbability(model, rawValue) {
       if (!model) {
         return Math.max(0, Math.min(1, rawValue));
       }
       const x = Math.max(0, Math.min(1, rawValue));
+      if (model.type === "empirical" && model.knots && model.knots.length) {
+        const knots = model.knots;
+        if (x <= knots[0].raw) {
+          return Math.max(0, Math.min(1, knots[0].calibrated));
+        }
+        for (let i = 1; i < knots.length; i += 1) {
+          const prior = knots[i - 1];
+          const next = knots[i];
+          if (x <= next.raw) {
+            const span = next.raw - prior.raw;
+            const fraction = span > 1e-12 ? (x - prior.raw) / span : 0;
+            const fitted = prior.calibrated + ((next.calibrated - prior.calibrated) * fraction);
+            return Math.max(0, Math.min(1, fitted));
+          }
+        }
+        return Math.max(0, Math.min(1, knots[knots.length - 1].calibrated));
+      }
       const fitted = model.intercept + (model.linear * x) + (model.quadratic * x * x);
       return Math.max(0, Math.min(1, fitted));
     }
 
-    function buildSurvivalCalibration(points, maSeries, signalSeries, maType, delta) {
+    function leastSquaresSellBelowAt(points, windowSize, index) {
+      if (index < windowSize - 2) {
+        return null;
+      }
+      const n = windowSize;
+      const sumX = (n * (n - 1)) / 2;
+      if (sumX === 0) {
+        return null;
+      }
+      let sumY = 0;
+      let sumXY = 0;
+      const start = index - (windowSize - 2);
+      for (let offset = 0; offset < windowSize - 1; offset += 1) {
+        const value = points[start + offset].close;
+        sumY += value;
+        sumXY += offset * value;
+      }
+      return sumY - ((n * sumXY) / sumX);
+    }
+
+    function survivalSellBoundary(points, index, maSeries, signalSeries, maType, windowSize) {
+      if (maType === "ema_n22n") {
+        const currentEma = currentEmaCrossoverValues(maSeries[index], signalSeries[index], windowSize);
+        return currentEma
+          ? emaCrossoverSellBelowFromCurrent(currentEma.shortEma, currentEma.longEma, windowSize)
+          : null;
+      }
+      return maSeries[index];
+    }
+
+    function leastSquaresSlopeSurvivalProbability(points, windowSize, index, sigmaAnn, muAnn, days) {
+      if (days <= 0) {
+        return 1;
+      }
+      if (index < windowSize - 1 || !(points[index].close > 0)) {
+        return 0;
+      }
+
+      const n = windowSize;
+      const sumX = (n * (n - 1)) / 2;
+      let survivalProbability = 1;
+
+      for (let futureOffset = 1; futureOffset <= days; futureOffset += 1) {
+        let mean = 0;
+        const futureTerms = [];
+        const start = index - windowSize + 1 + futureOffset;
+
+        for (let offset = 0; offset < n; offset += 1) {
+          const coeff = (n * offset) - sumX;
+          const pointIndex = start + offset;
+          if (pointIndex <= index) {
+            mean += coeff * points[pointIndex].close;
+          } else {
+            const step = pointIndex - index;
+            const t = step / DAYS_PER_YEAR;
+            const expectedPrice = points[index].close;
+            mean += coeff * expectedPrice;
+            futureTerms.push({ coeff, step, expectedPrice });
+          }
+        }
+
+        let variance = 0;
+        if (sigmaAnn > 1e-12) {
+          const sigmaSquared = sigmaAnn * sigmaAnn;
+          for (const a of futureTerms) {
+            for (const b of futureTerms) {
+              const minT = Math.min(a.step, b.step) / DAYS_PER_YEAR;
+              const covariance = a.expectedPrice * b.expectedPrice * (Math.exp(sigmaSquared * minT) - 1);
+              variance += a.coeff * b.coeff * covariance;
+            }
+          }
+        }
+
+        let sellProbability;
+        if (variance <= 1e-12) {
+          sellProbability = mean < 0 ? 1 : 0;
+        } else {
+          sellProbability = normCdf(-mean / Math.sqrt(variance));
+        }
+        survivalProbability *= Math.max(0, Math.min(1, 1 - sellProbability));
+      }
+
+      return Math.max(0, Math.min(1, survivalProbability));
+    }
+
+    function rawSignalSurvivalProbability(points, index, maSeries, signalSeries, maType, windowSize, sigma, drift, termDays) {
+      if (maType === "least_squares") {
+        return leastSquaresSlopeSurvivalProbability(points, windowSize, index, sigma, drift, termDays);
+      }
+      const sellBoundary = survivalSellBoundary(points, index, maSeries, signalSeries, maType, windowSize);
+      if (sellBoundary === null) {
+        return 0;
+      }
+      return 1 - forcedSaleProbability(points[index].close, sellBoundary, sigma, drift, termDays);
+    }
+
+    function buildSurvivalCalibration(points, maSeries, signalSeries, maType, delta, windowSize) {
       if (!(delta > 0)) {
         return null;
       }
@@ -1385,15 +1570,14 @@
       for (const termDays of [20, 15, 10, 5]) {
         const samples = [];
         for (let index = 0; index + termDays < points.length; index += 1) {
-          const movingAverage = maSeries[index];
           const tradeSignal = signalSeries[index];
           const price = points[index].close;
-          if (movingAverage === null || !hasTradeSignal(tradeSignal) || !isBuySignal(price, tradeSignal, maType)) {
+          if (!hasTradeSignal(tradeSignal) || !isBuySignal(price, tradeSignal, maType)) {
             continue;
           }
           const sigma = estimateSigma(points, index);
           const drift = estimateDrift(points, index);
-          const rawSurvival = 1 - forcedSaleProbability(price, movingAverage, sigma, drift, termDays);
+          const rawSurvival = rawSignalSurvivalProbability(points, index, maSeries, signalSeries, maType, windowSize, sigma, drift, termDays);
           const expirationIndex = Math.min(index + termDays, points.length - 1);
           const timeToExpiry = Math.max((expirationIndex - index) / DAYS_PER_YEAR, 1 / DAYS_PER_YEAR);
           const strike = roundOptionStrike(findStrike(price, timeToExpiry, CASH_RATE, sigma, delta));
@@ -1407,17 +1591,22 @@
             }
           }
           const expiredOtm = !forcedBuyback && points[expirationIndex].close <= strike;
+          const outcome = isLeastSquaresType(maType)
+            ? (forcedBuyback ? 0 : 1)
+            : (expiredOtm ? 1 : 0);
           samples.push({
             raw: rawSurvival,
-            outcome: expiredOtm ? 1 : 0
+            outcome
           });
         }
-        models[termDays] = fitQuadraticCalibration(samples);
+        models[termDays] = isLeastSquaresType(maType)
+          ? fitEmpiricalCalibration(samples)
+          : fitQuadraticCalibration(samples);
       }
       return models;
     }
 
-    function chooseSuggestedTerm(points, maSeries, signalSeries, maType, index, targetSurvival = DEFAULT_SURVIVAL_THRESHOLD, delta = DEFAULT_DELTA, calibration = null, maxTerm = null) {
+    function chooseSuggestedTerm(points, maSeries, signalSeries, maType, index, targetSurvival = DEFAULT_SURVIVAL_THRESHOLD, delta = DEFAULT_DELTA, calibration = null, maxTerm = null, windowSize = DEFAULT_SMA_WINDOW) {
       const candidateTerms = [20, 15, 10, 5].filter((termDays) => maxTerm === null || termDays <= maxTerm);
       if (!(delta > 0)) {
         return {
@@ -1428,10 +1617,9 @@
       }
 
       const price = points[index].close;
-      const movingAverage = maSeries[index];
       const tradeSignal = signalSeries[index];
 
-      if (movingAverage === null || !hasTradeSignal(tradeSignal)) {
+      if (!hasTradeSignal(tradeSignal)) {
         if (isLeastSquaresType(maType)) {
           return {
             termDays: 0,
@@ -1457,7 +1645,7 @@
       const sigma = estimateSigma(points, index);
       const drift = estimateDrift(points, index);
       for (const termDays of candidateTerms) {
-        const rawSurvival = 1 - forcedSaleProbability(price, movingAverage, sigma, drift, termDays);
+        const rawSurvival = rawSignalSurvivalProbability(points, index, maSeries, signalSeries, maType, windowSize, sigma, drift, termDays);
         const survival = calibratedProbability(calibration ? calibration[termDays] : null, rawSurvival);
         if (survival >= targetSurvival) {
           return {
@@ -1577,7 +1765,7 @@
       const maSeries = computeMa(points, config.smaWindow, config.maType);
       const signalSeries = computeSignalSeries(points, config.smaWindow, config.maType);
       const tradeSignalSeries = computeTradeSignalSeries(points, maSeries, signalSeries, config);
-      const survivalCalibration = buildSurvivalCalibration(points, maSeries, tradeSignalSeries, config.maType, config.delta);
+      const survivalCalibration = buildSurvivalCalibration(points, maSeries, tradeSignalSeries, config.maType, config.delta, config.smaWindow);
       let invested = true;
       let shares = config.startingCapital / points[0].close;
       let cash = 0;
@@ -1762,7 +1950,7 @@
         if (invested && !activeOption) {
           const suggestion = config.delta <= 0
             ? { termDays: 0, estSurvival: 0, rawSurvival: 0 }
-            : chooseSuggestedTerm(points, maSeries, tradeSignalSeries, config.maType, i, config.survivalThreshold, config.delta, survivalCalibration, config.maxTerm);
+            : chooseSuggestedTerm(points, maSeries, tradeSignalSeries, config.maType, i, config.survivalThreshold, config.delta, survivalCalibration, config.maxTerm, config.smaWindow);
           termCounts[suggestion.termDays] += 1;
           if (suggestion.termDays > 0) {
             const expirationIndex = Math.min(i + suggestion.termDays, points.length - 1);
@@ -2225,23 +2413,7 @@
       }
 
       if (config.maType === "least_squares") {
-        const prior = points.slice(-(windowSize - 1));
-        if (prior.length < windowSize - 1) {
-          return null;
-        }
-        const n = windowSize;
-        const sumX = (n * (n - 1)) / 2;
-        if (sumX === 0) {
-          return null;
-        }
-        let sumY = 0;
-        let sumXY = 0;
-        for (let offset = 0; offset < prior.length; offset += 1) {
-          const value = prior[offset].close;
-          sumY += value;
-          sumXY += offset * value;
-        }
-        return sumY - ((n * sumXY) / sumX);
+        return leastSquaresSellBelowAt(points, windowSize, points.length - 1);
       }
 
       return null;
@@ -2871,7 +3043,7 @@
       const latest = points[points.length - 1];
       const suggestion = isBuyHoldType(config.maType) || config.delta <= 0
         ? { termDays: 0, estSurvival: 0, rawSurvival: 0 }
-        : chooseSuggestedTerm(points, simulation.smaSeries, simulation.tradeSignalSeries || simulation.signalSeries, config.maType, points.length - 1, config.survivalThreshold, config.delta, simulation.survivalCalibration, config.maxTerm);
+        : chooseSuggestedTerm(points, simulation.smaSeries, simulation.tradeSignalSeries || simulation.signalSeries, config.maType, points.length - 1, config.survivalThreshold, config.delta, simulation.survivalCalibration, config.maxTerm, config.smaWindow);
       latestEl.textContent = "Latest close: $" + latest.close.toFixed(2) + " (" + formatDate(latest.date) + ")";
       dataSourceEl.textContent = currentDataSource || ("Daily prices (" + ticker + ")");
       metricFinalEl.textContent = formatMoney(stats.finalEquity);
