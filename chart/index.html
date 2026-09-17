@@ -2009,6 +2009,7 @@
         equitySeries,
         currentRegime,
         currentInvestmentLabel,
+        floorHoldPrice: currentRegime === "Floor hold" ? lastCompletedRoundTripSalePrice : null,
         survivalCalibration,
         sales,
         expiredOtmCount,
@@ -2312,7 +2313,7 @@
       };
     }
 
-    function formatCurrentMetric(points, maSeries, signalSeries, config) {
+    function formatCurrentMetric(points, maSeries, signalSeries, config, simulation = null) {
       if (!points.length) {
         return "--";
       }
@@ -2321,6 +2322,9 @@
       const rows = [
         ["Price", formatMoneyCents(points[latestIndex].close)]
       ];
+      const floorHoldSellBelow = simulation && simulation.currentRegime === "Floor hold"
+        ? simulation.floorHoldPrice
+        : null;
 
       if (config.maType === "simple") {
         const sma = maSeries[latestIndex];
@@ -2334,7 +2338,8 @@
         if (currentEma) {
           const displayedShortEma = roundCents(currentEma.shortEma);
           const displayedLongEma = roundCents(currentEma.longEma);
-          const sellBelow = emaCrossoverSellBelowFromCurrent(displayedShortEma, displayedLongEma, config.smaWindow);
+          const rawSellBelow = emaCrossoverSellBelowFromCurrent(displayedShortEma, displayedLongEma, config.smaWindow);
+          const sellBelow = floorHoldSellBelow !== null ? floorHoldSellBelow : rawSellBelow;
           rows.push(["Short EMA " + currentEma.fastWindow, formatMoneyCents(displayedShortEma)]);
           rows.push(["Long EMA " + currentEma.slowWindow, formatMoneyCents(displayedLongEma)]);
           rows.push(["EMA Spread", formatPercent(currentEma.longEma === 0 ? 0 : ((currentEma.shortEma - currentEma.longEma) / currentEma.longEma))]);
@@ -2344,7 +2349,9 @@
         }
       } else if (isZeroLineSignalType(config.maType) && isLeastSquaresType(config.maType) && !isPredictedLeastSquaresType(config.maType)) {
         const slope = signalSeries[latestIndex];
-        const sellBelow = computeSellBelow(points, config, maSeries, signalSeries);
+        const sellBelow = floorHoldSellBelow !== null
+          ? floorHoldSellBelow
+          : computeSellBelow(points, config, maSeries, signalSeries);
         rows.push(["Slope", formatSlopePercent(slope)]);
         if (sellBelow !== null && Number.isFinite(sellBelow)) {
           rows.push(["Sell Below", formatMoneyCents(sellBelow)]);
@@ -3051,7 +3058,7 @@
       metricMaxDdEl.textContent = formatPercent(stats.maxDrawdown);
       metricPositionEl.innerHTML = formatPositionMetric(simulation.currentInvestmentLabel, simulation.currentRegime);
       metricCurrentLabelEl.textContent = isZeroLineSignalType(config.maType) && isLeastSquaresType(config.maType) && !isPredictedLeastSquaresType(config.maType) ? "Price / Slope" : "Current";
-      metricCurrentEl.innerHTML = formatCurrentMetric(points, simulation.smaSeries, simulation.signalSeries, config);
+      metricCurrentEl.innerHTML = formatCurrentMetric(points, simulation.smaSeries, simulation.signalSeries, config, simulation);
       metricSuggestedTermEl.textContent = formatSuggestedCallQuote(suggestedCallQuote(points, config, suggestion));
       metricExpiredOtmEl.textContent = String(simulation.expiredOtmCount) + " | " + formatMoney(simulation.expiredOtmPnl);
       metricForcedSalesEl.textContent = String(simulation.boughtBackCount) + " | " + formatMoney(simulation.boughtBackPnl);
