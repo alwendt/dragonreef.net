@@ -2926,6 +2926,7 @@
               min: alignedScales ? alignedScales.priceMin : undefined,
               max: alignedScales ? alignedScales.priceMax : undefined,
               ticks: {
+                color: "#0e7c86",
                 callback: (value) => formatAxisMoney(value)
               },
               grid: {
@@ -2938,6 +2939,7 @@
               min: alignedScales ? alignedScales.equityMin : undefined,
               max: alignedScales ? alignedScales.equityMax : undefined,
               ticks: {
+                color: "#17233f",
                 callback: (value) => formatAxisMoney(value)
               },
               grid: {
@@ -2949,6 +2951,7 @@
               display: isZeroLineSignalType(config.maType) && config.maType !== "ema_n22n",
               position: "right",
               ticks: {
+                color: "#6d5dfc",
                 callback: (value) => config.maType === "ema_n22n" ? Number(value).toFixed(2) : Number(value).toFixed(0) + "%"
               },
               grid: {
