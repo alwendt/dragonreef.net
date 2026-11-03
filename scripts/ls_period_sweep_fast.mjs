@@ -358,7 +358,7 @@ function computeEma(points, windowSize) {
 
 function computeEmaCrossover(points, windowSize) {
   const fastSeries = computeEma(points, windowSize);
-  const slowSeries = computeEma(points, windowSize * 2);
+  const slowSeries = computeEma(points, windowSize * 4);
   const spreadSeries = new Array(points.length).fill(null);
   for (let i = 0; i < points.length; i += 1) {
     if (fastSeries[i] !== null && slowSeries[i] !== null) {
@@ -373,7 +373,7 @@ function emaCrossoverSignalAfterClose(price, slowEma, spread, windowSize) {
     return null;
   }
   const fastAlpha = 2 / (windowSize + 1);
-  const slowAlpha = 2 / ((windowSize * 2) + 1);
+  const slowAlpha = 2 / ((windowSize * 4) + 1);
   const fastEma = (fastAlpha * price) + ((1 - fastAlpha) * (slowEma + spread));
   const updatedSlowEma = (slowAlpha * price) + ((1 - slowAlpha) * slowEma);
   return fastEma - updatedSlowEma;

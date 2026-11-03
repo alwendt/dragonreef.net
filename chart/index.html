@@ -352,7 +352,7 @@
                 <option value="simple">Simple</option>
                 <option value="exponential">Exponential</option>
                 <option value="buy_hold">Buy and Hold</option>
-                <option value="ema_n22n">EMA N/2N Crossover</option>
+                <option value="ema_n24n">EMA N/4N Crossover</option>
                 <option value="least_squares">Least Squares Slope</option>
                 <option value="exp_weighted_least_squares">Exp Weighted LS Slope</option>
                 <option value="cosine_weighted_least_squares">Cosine Weighted LS Slope</option>
@@ -497,6 +497,7 @@
     let latestMaSeries = [];
     let latestSignalSeries = [];
     let latestEquitySeries = [];
+    let latestInvestedSeries = [];
     let latestSignalEvents = [];
     let latestRoundTrips = [];
     let activeRange = "MAX";
@@ -575,8 +576,8 @@
       if (normalized === "ema" || normalized === "exponential") {
         return "exponential";
       }
-      if (normalized === "ema_n22n" || normalized === "ema crossover" || normalized === "ema_cross" || normalized === "emac") {
-        return "ema_n22n";
+      if (normalized === "ema_n24n" || normalized === "ema crossover" || normalized === "ema_cross" || normalized === "emac") {
+        return "ema_n24n";
       }
       if (normalized === "least_squares" || normalized === "least-squares" || normalized === "least squares" || normalized === "ls") {
         return "least_squares";
@@ -613,7 +614,7 @@
     }
 
     function isZeroLineSignalType(type) {
-      return type === "least_squares" || type === "exp_weighted_least_squares" || type === "cosine_weighted_least_squares" || type === "ema_n22n";
+      return type === "least_squares" || type === "exp_weighted_least_squares" || type === "cosine_weighted_least_squares" || type === "ema_n24n";
     }
 
     function getMaType() {
@@ -625,7 +626,7 @@
     }
 
     function emaCrossoverSlowWindow(window) {
-      return emaCrossoverFastWindow(window) * 2;
+      return emaCrossoverFastWindow(window) * 4;
     }
 
     function maLabel(type, window) {
@@ -635,7 +636,7 @@
       if (type === "exponential") {
         return "EMA " + window;
       }
-      if (type === "ema_n22n") {
+      if (type === "ema_n24n") {
         return "EMA " + emaCrossoverFastWindow(window) + "/" + emaCrossoverSlowWindow(window) + " Crossover";
       }
       if (type === "least_squares") {
@@ -663,7 +664,7 @@
       if (type === "exponential") {
         return "exponential moving average";
       }
-      if (type === "ema_n22n") {
+      if (type === "ema_n24n") {
         return "EMA " + emaCrossoverFastWindow(window) + "/" + emaCrossoverSlowWindow(window) + " crossover";
       }
       if (type === "least_squares") {
@@ -685,7 +686,7 @@
     }
 
     function signalLabel(type) {
-      if (type === "ema_n22n") {
+      if (type === "ema_n24n") {
         return "EMA crossover spread";
       }
       if (type === "exp_weighted_least_squares") {
@@ -701,7 +702,7 @@
     }
 
     function signalUnit(type) {
-      if (type === "ema_n22n") {
+      if (type === "ema_n24n") {
         return "";
       }
       return isPredictedLeastSquaresType(type) ? "" : "% ann.";
@@ -975,7 +976,7 @@
       if (type === "exponential") {
         return computeEma(points, windowSize);
       }
-      if (type === "ema_n22n") {
+      if (type === "ema_n24n") {
         return computeEmaCrossover(points, windowSize).slowSeries;
       }
       if (type === "least_squares") {
@@ -1006,7 +1007,7 @@
       if (type === "cosine_weighted_least_squares") {
         return computeCosineWeightedLeastSquares(points, windowSize).slopeSeries;
       }
-      if (type === "ema_n22n") {
+      if (type === "ema_n24n") {
         return computeEmaCrossover(points, windowSize).spreadSeries;
       }
       if (type === "least_squares_predicted") {
@@ -1032,7 +1033,7 @@
     }
 
     function computeTradeSignalSeries(points, maSeries, signalSeries, config) {
-      if (config.maType !== "ema_n22n") {
+      if (config.maType !== "ema_n24n") {
         return signalSeries;
       }
       return signalSeries.map((signal, index) => {
@@ -1487,7 +1488,7 @@
     }
 
     function survivalSellBoundary(points, index, maSeries, signalSeries, maType, windowSize) {
-      if (maType === "ema_n22n") {
+      if (maType === "ema_n24n") {
         const currentEma = currentEmaCrossoverValues(maSeries[index], signalSeries[index], windowSize);
         return currentEma
           ? emaCrossoverSellBelowFromCurrent(currentEma.shortEma, currentEma.longEma, windowSize)
@@ -1667,7 +1668,7 @@
       if (isPredictedLeastSquaresType(config.maType)) {
         return signalLabel(config.maType) + " fell below close";
       }
-      if (config.maType === "ema_n22n") {
+      if (config.maType === "ema_n24n") {
         return "EMA " + emaCrossoverFastWindow(config.smaWindow) + " fell below EMA " + emaCrossoverSlowWindow(config.smaWindow);
       }
       if (isLeastSquaresType(config.maType)) {
@@ -1680,7 +1681,7 @@
       if (isPredictedLeastSquaresType(config.maType)) {
         return signalLabel(config.maType) + " rose above close after delay";
       }
-      if (config.maType === "ema_n22n") {
+      if (config.maType === "ema_n24n") {
         return "EMA " + emaCrossoverFastWindow(config.smaWindow) + " rose above EMA " + emaCrossoverSlowWindow(config.smaWindow) + " after delay";
       }
       if (isLeastSquaresType(config.maType)) {
@@ -1743,6 +1744,7 @@
         signalSeries: points.map(() => null),
         tradeSignalSeries: points.map(() => null),
         equitySeries,
+        investedSeries: points.map(() => true),
         currentRegime: "Buy and hold",
         currentInvestmentLabel: "100%",
         survivalCalibration: null,
@@ -1773,6 +1775,7 @@
       let reentryIndex = -1;
       let currentRegime = "Invested";
       const equitySeries = [];
+      const investedSeries = [];
       let sales = 0;
       let expiredOtmCount = 0;
       let expiredOtmPnl = 0;
@@ -1984,6 +1987,7 @@
           investedDays += 1;
         }
         equitySeries.push(equity);
+        investedSeries.push(invested);
       }
 
       if (pendingRoundTrip) {
@@ -2007,6 +2011,7 @@
         signalSeries,
         tradeSignalSeries,
         equitySeries,
+        investedSeries,
         currentRegime,
         currentInvestmentLabel,
         floorHoldPrice: currentRegime === "Floor hold" ? lastCompletedRoundTripSalePrice : null,
@@ -2116,8 +2121,38 @@
       return /[",\n\r]/.test(text) ? '"' + text.replace(/"/g, '""') + '"' : text;
     }
 
-    function yearlyPerformanceRows(points, equitySeries, startingBalance) {
+    function yearlyPerformanceRows(points, equitySeries, investedSeries, startingBalance, roundTrips = []) {
       const years = new Map();
+      const salesByYear = new Map();
+      roundTrips.forEach((trip) => {
+        if (!(trip.exitDate instanceof Date) || !Number.isFinite(trip.stockPnl)) {
+          return;
+        }
+        const year = trip.exitDate.getFullYear();
+        if (!salesByYear.has(year)) {
+          salesByYear.set(year, {
+            winningSales: 0,
+            totalWins: 0,
+            losingSales: 0,
+            totalLosses: 0,
+            optionPremium: 0,
+            stockGains: 0,
+            cashInterest: 0
+          });
+        }
+        const stats = salesByYear.get(year);
+        if (trip.stockPnl > 0) {
+          stats.winningSales += 1;
+          stats.totalWins += trip.stockPnl;
+        } else if (trip.stockPnl < 0) {
+          stats.losingSales += 1;
+          stats.totalLosses += trip.stockPnl;
+        }
+        stats.optionPremium += Number.isFinite(trip.optionPremium) ? trip.optionPremium : 0;
+        stats.stockGains += Number.isFinite(trip.stockPnl) ? trip.stockPnl : 0;
+        stats.cashInterest += Number.isFinite(trip.cashInterest) ? trip.cashInterest : 0;
+      });
+
       for (let i = 0; i < points.length; i += 1) {
         const equity = equitySeries[i];
         if (equity === null || !Number.isFinite(equity)) {
@@ -2140,11 +2175,34 @@
         .map((row) => {
           const beginning = priorEnding === null ? row.ending : priorEnding;
           priorEnding = row.ending;
+          const stats = salesByYear.get(row.year) || {
+            winningSales: 0,
+            totalWins: 0,
+            losingSales: 0,
+            totalLosses: 0,
+            optionPremium: 0,
+            stockGains: 0,
+            cashInterest: 0
+          };
+          let daysInvested = 0;
+          for (let i = 0; i < points.length; i += 1) {
+            if (points[i].date.getFullYear() === row.year && investedSeries[i] === true) {
+              daysInvested += 1;
+            }
+          }
           return {
             year: row.year,
             beginning,
             ending: row.ending,
-            percentChange: beginning === 0 ? 0 : (row.ending / beginning) - 1
+            percentChange: beginning === 0 ? 0 : (row.ending / beginning) - 1,
+            winningSales: stats.winningSales,
+            averageWin: stats.winningSales ? stats.totalWins / stats.winningSales : 0,
+            losingSales: stats.losingSales,
+            averageLoss: stats.losingSales ? stats.totalLosses / stats.losingSales : 0,
+            optionPremium: stats.optionPremium,
+            stockGains: stats.stockGains,
+            cashInterest: stats.cashInterest,
+            daysInvested
           };
         });
     }
@@ -2228,19 +2286,46 @@
         return;
       }
       const config = readFormConfig();
-      const rows = yearlyPerformanceRows(latestPoints, latestEquitySeries, config.startingCapital);
+      const rows = yearlyPerformanceRows(
+        latestPoints,
+        latestEquitySeries,
+        latestInvestedSeries,
+        config.startingCapital,
+        latestRoundTrips
+      );
       if (!rows.length) {
         setStatus("No yearly performance rows are available to download.", true);
         return;
       }
 
-      const csvRows = [["year", "beginning_balance", "ending_balance", "percent_up_or_down"]];
+      const csvRows = [[
+        "year",
+        "beginning_balance",
+        "ending_balance",
+        "percent_up_or_down",
+        "winning_sales",
+        "average_win",
+        "losing_sales",
+        "average_loss",
+        "option_premium",
+        "stock_gains",
+        "cash_interest",
+        "days_invested"
+      ]];
       for (const row of rows) {
         csvRows.push([
           row.year,
           row.beginning.toFixed(2),
           row.ending.toFixed(2),
-          (row.percentChange * 100).toFixed(2) + "%"
+          (row.percentChange * 100).toFixed(2) + "%",
+          row.winningSales,
+          row.averageWin.toFixed(2),
+          row.losingSales,
+          row.averageLoss.toFixed(2),
+          row.optionPremium.toFixed(2),
+          row.stockGains.toFixed(2),
+          row.cashInterest.toFixed(2),
+          row.daysInvested
         ]);
       }
 
@@ -2331,7 +2416,7 @@
         if (sma !== null && Number.isFinite(sma)) {
           rows.push(["SMA " + config.smaWindow, formatMoneyCents(sma)]);
         }
-      } else if (config.maType === "ema_n22n") {
+      } else if (config.maType === "ema_n24n") {
         const longEma = maSeries[latestIndex];
         const spread = signalSeries[latestIndex];
         const currentEma = currentEmaCrossoverValues(longEma, spread, config.smaWindow);
@@ -2390,7 +2475,7 @@
         return null;
       }
 
-      if (config.maType === "ema_n22n") {
+      if (config.maType === "ema_n24n") {
         const fastWindow = emaCrossoverFastWindow(windowSize);
         const slowWindow = emaCrossoverSlowWindow(windowSize);
         const fastAlpha = 2 / (fastWindow + 1);
@@ -2614,17 +2699,17 @@
       const tradingDayIndexByTime = new Map(labels.map((date, index) => [date.getTime(), index]));
       const roundedMaSeries = maSeries.map((value) => (value === null ? null : Number(value.toFixed(2))));
       const signalDigits = isPredictedLeastSquaresType(config.maType) || isZeroLineSignalType(config.maType) ? 2 : 4;
-      const roundedSignalSeries = (isLeastSquaresType(config.maType) || config.maType === "ema_n22n")
+      const roundedSignalSeries = (isLeastSquaresType(config.maType) || config.maType === "ema_n24n")
         ? signalSeries.map((value) => (value === null ? null : Number(value.toFixed(signalDigits))))
         : [];
-      const emaFastSeries = config.maType === "ema_n22n"
+      const emaFastSeries = config.maType === "ema_n24n"
         ? maSeries.map((value, index) => (value === null || signalSeries[index] === null ? null : value + signalSeries[index]))
         : [];
       const roundedEmaFastSeries = emaFastSeries.map((value) => (value === null ? null : Number(value.toFixed(2))));
-      const emaFastAboveSeries = config.maType === "ema_n22n"
+      const emaFastAboveSeries = config.maType === "ema_n24n"
         ? emaFastSeries.map((value, index) => (value !== null && maSeries[index] !== null && value >= maSeries[index] ? Number(value.toFixed(2)) : null))
         : [];
-      const emaFastBelowSeries = config.maType === "ema_n22n"
+      const emaFastBelowSeries = config.maType === "ema_n24n"
         ? emaFastSeries.map((value, index) => (value !== null && maSeries[index] !== null && value < maSeries[index] ? Number(value.toFixed(2)) : null))
         : [];
       const leastSquaresSegments = config.maType === "least_squares"
@@ -2666,7 +2751,7 @@
         }
       ];
 
-      if (!isBuyHoldType(config.maType) && !isLeastSquaresType(config.maType) && config.maType !== "ema_n22n") {
+      if (!isBuyHoldType(config.maType) && !isLeastSquaresType(config.maType) && config.maType !== "ema_n24n") {
         datasets.push({
           label: maLabel(config.maType, config.smaWindow),
           data: roundedMaSeries,
@@ -2678,7 +2763,7 @@
         });
       }
 
-      if (config.maType === "ema_n22n") {
+      if (config.maType === "ema_n24n") {
         const emaSlowDatasetIndex = datasets.length;
         const emaFastWindow = emaCrossoverFastWindow(config.smaWindow);
         const emaSlowWindow = emaCrossoverSlowWindow(config.smaWindow);
@@ -2948,11 +3033,11 @@
             },
             slope: {
               type: "linear",
-              display: isZeroLineSignalType(config.maType) && config.maType !== "ema_n22n",
+              display: isZeroLineSignalType(config.maType) && config.maType !== "ema_n24n",
               position: "right",
               ticks: {
                 color: "#6d5dfc",
-                callback: (value) => config.maType === "ema_n22n" ? Number(value).toFixed(2) : Number(value).toFixed(0) + "%"
+                callback: (value) => config.maType === "ema_n24n" ? Number(value).toFixed(2) : Number(value).toFixed(0) + "%"
               },
               grid: {
                 drawOnChartArea: false
@@ -3042,6 +3127,7 @@
       latestMaSeries = simulation.smaSeries;
       latestSignalSeries = simulation.signalSeries || [];
       latestEquitySeries = simulation.equitySeries;
+      latestInvestedSeries = simulation.investedSeries || [];
       latestSignalEvents = simulation.signalEvents || [];
       latestRoundTrips = simulation.roundTrips || [];
       activeRangeEndIndex = preservedEndDate === null
@@ -3086,6 +3172,7 @@
         latestMaSeries = [];
         latestSignalSeries = [];
         latestEquitySeries = [];
+        latestInvestedSeries = [];
         latestSignalEvents = [];
         latestRoundTrips = [];
         metricFinalEl.textContent = "$--";
